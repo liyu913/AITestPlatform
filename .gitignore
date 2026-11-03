@@ -1,0 +1,55 @@
+.worktrees/
+
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+*.egg-info/
+
+# Alembic local SQLite used only to autogenerate revisions
+backend/_alembic_gen.db
+
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# Local env / secrets（保留各目录下的 .env.example）
+.env
+**/.env
+
+# 本地上传与运行时数据（默认 upload_dir）
+backend/data/
+
+# Celery Beat 本地调度状态
+celerybeat-schedule
+celerybeat-schedule-*
+
+# Python 测试与类型工具缓存
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# TypeScript 增量编译信息
+*.tsbuildinfo
+
+# 日志与系统文件
+*.log
+.DS_Store
+
+# IDE 本地配置（按需提交的团队可改为仅忽略 /.idea/workspace.xml 等）
+.idea/
+
+# Playwright CLI / Midscene 本地运行产物
+.playwright-cli/
+midscene_run/
+test-results/
+playwright-report/
+blob-report/
+
+docs/
+article/
+article/images/
+
+.obsidian/

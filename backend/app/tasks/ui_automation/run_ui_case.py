@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+import logging
+
+import app.deps as deps_mod
+from app.services.ui_automation.ui_run_executor import execute_ui_run
+from app.tasks.celery_app import celery_app
+
+log = logging.getLogger(__name__)
+
+
+@celery_app.task(name="run_ui_case", bind=True)
+def run_ui_case_task(self, run_id: int) -> None:  # noqa: ANN001
+    db = deps_mod.SessionLocal()
+    try:
+        execute_ui_run(db, run_id)
+        # if deferred due to concurrency, requeue shortly
+        from app.models.ui_automation.ui_automation import UiRun
+
+        run = db.get(UiRun, run_id)
+        if run and run.status == "pending":
+            summary = run.summary_json if isinstance(run.summary_json, dict) else {}
+            if summary.get("deferred"):
+                run_ui_case_task.apply_async(args=[run_id], countdown=15, queue=run.queue_name or "ui")
+    except Exception:
+        log.exception("run_ui_case_task failed run_id=%s", run_id)
+        raise
+    finally:
+        db.close()
+
+
+def enqueue_run_ui_case(run_id: int, queue: str = "ui") -> str | None:
+    async_result = run_ui_case_task.apply_async(args=[run_id], queue=queue or "ui")
+    return getattr(async_result, "id", None)

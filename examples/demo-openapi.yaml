@@ -1,0 +1,309 @@
+openapi: 3.0.3
+info:
+  title: Demo Shop API
+  description: RainaAI测试平台 接口资产库导入示例（OpenAPI 3）
+  version: 1.0.0
+servers:
+  - url: https://httpbin.org
+    description: 公共调试环境（可按需改成自己的 base_url）
+tags:
+  - name: auth
+    description: 登录鉴权
+  - name: products
+    description: 商品
+  - name: orders
+    description: 订单
+
+paths:
+  /status/{code}:
+    get:
+      tags: [auth]
+      summary: 探活 / 状态码探测
+      operationId: getStatus
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 200
+      responses:
+        "200":
+          description: OK
+
+  /post:
+    post:
+      tags: [auth]
+      summary: 登录获取 token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /anything/products:
+    get:
+      tags: [products]
+      summary: 商品列表
+      operationId: listProducts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          example: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+          example: 20
+        - name: keyword
+          in: query
+          schema:
+            type: string
+          example: phone
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+
+    post:
+      tags: [products]
+      summary: 创建商品
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /anything/products/{productId}:
+    get:
+      tags: [products]
+      summary: 商品详情
+      operationId: getProduct
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "1001"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+    put:
+      tags: [products]
+      summary: 更新商品
+      operationId: updateProduct
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "1001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+    delete:
+      tags: [products]
+      summary: 删除商品
+      operationId: deleteProduct
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "1001"
+      responses:
+        "204":
+          description: 已删除
+
+  /anything/orders:
+    post:
+      tags: [orders]
+      summary: 创建订单
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderCreate"
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /anything/orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: 订单详情
+      operationId: getOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "ORD-10001"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: demo
+        password:
+          type: string
+          example: demo123
+        remember:
+          type: boolean
+          default: true
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+        expiresIn:
+          type: integer
+          example: 7200
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "1001"
+        name:
+          type: string
+          example: Phone X
+        price:
+          type: number
+          example: 3999.0
+        stock:
+          type: integer
+          example: 100
+        tags:
+          type: array
+          items:
+            type: string
+          example: [electronics, phone]
+
+    ProductCreate:
+      type: object
+      required: [name, price]
+      properties:
+        name:
+          type: string
+          example: Phone X
+        price:
+          type: number
+          example: 3999.0
+        stock:
+          type: integer
+          example: 100
+        tags:
+          type: array
+          items:
+            type: string
+          example: [electronics, phone]
+
+    ProductList:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+
+    OrderCreate:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: string
+          example: "1001"
+        quantity:
+          type: integer
+          example: 2
+        remark:
+          type: string
+          example: 加急发货
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          example: ORD-10001
+        productId:
+          type: string
+          example: "1001"
+        quantity:
+          type: integer
+          example: 2
+        status:
+          type: string
+          example: created
+        amount:
+          type: number
+          example: 7998.0

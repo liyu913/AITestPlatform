@@ -1,0 +1,6 @@
+node_modules/
+.playwright-cli/
+midscene_run/
+test-results/
+playwright-report/
+blob-report/
