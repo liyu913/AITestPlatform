@@ -43,6 +43,16 @@ class TestCase(Base, TimestampMixin):
     last_result: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     last_result_at: Mapped[datetime.datetime | None] = mapped_column(BeijingDateTime, nullable=True)
     version_no: Mapped[int] = mapped_column(Integer, default=1)
+    # Formal-library pointer: the approved version currently published for reuse.
+    published_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_case_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    published_version_no: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    published_at: Mapped[datetime.datetime | None] = mapped_column(BeijingDateTime, nullable=True)
+    assigned_reviewer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    review_due_at: Mapped[datetime.datetime | None] = mapped_column(BeijingDateTime, nullable=True)
     archived_at: Mapped[datetime.datetime | None] = mapped_column(BeijingDateTime, nullable=True)
     archived_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -62,6 +72,7 @@ class TestCase(Base, TimestampMixin):
         back_populates="case",
         cascade="all, delete-orphan",
         order_by="TestCaseVersion.version_no",
+        foreign_keys="TestCaseVersion.case_id",
     )
     reviews = relationship(
         "TestCaseReview",
@@ -105,7 +116,9 @@ class TestCaseVersion(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    case = relationship("TestCase", back_populates="versions")
+    case = relationship(
+        "TestCase", back_populates="versions", foreign_keys="TestCaseVersion.case_id"
+    )
 
 
 class TestCaseReview(Base, TimestampMixin):

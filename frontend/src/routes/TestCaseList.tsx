@@ -8,7 +8,6 @@ import {
   Input,
   Modal,
   Pagination,
-  Popconfirm,
   Select,
   Space,
   Spin,
@@ -16,6 +15,7 @@ import {
   Tag,
 } from 'antd'
 import type { MenuProps } from 'antd'
+import { EllipsisOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -71,6 +71,9 @@ type TestCase = {
   last_result?: string | null
   last_result_at?: string | null
   version_no?: number
+  published_version_id?: number | null
+  published_version_no?: number | null
+  published_at?: string | null
   tags_json: string[] | null
   creator_id: number | null
   created_at: string
@@ -257,7 +260,7 @@ export default function TestCaseList() {
   const { containerRef, scrollY } = useTableScrollY()
   const [viewMode, setViewMode] = useListViewMode('list-view:test-cases')
 
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { projectId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const pid = Number(projectId)
@@ -339,8 +342,31 @@ export default function TestCaseList() {
       .catch(() => undefined)
   }, [caseParam, listQuery.data, pid, searchParams, setSearchParams])
 
+  const publishMut = useMutation({
+    mutationFn: (id: number) =>
+      apiJson<TestCase>(`/api/v1/projects/${pid}/test-cases/${id}/publish`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (row) => {
+      message.success(`已发布 v${row.published_version_no}`)
+      void qc.invalidateQueries({ queryKey: ['testcases', pid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
   const [reviewTarget, setReviewTarget] = useState<TestCase | null>(null)
   const [reviewComment, setReviewComment] = useState('')
+  const [submitTarget, setSubmitTarget] = useState<TestCase | null>(null)
+  const [submitReviewer, setSubmitReviewer] = useState<number | undefined>()
+  const [submitDue, setSubmitDue] = useState('')
+
+  const membersQuery = useQuery({
+    queryKey: ['project-members', pid],
+    queryFn: () =>
+      apiJson<{ user_id: number; username: string }[]>(`/api/v1/projects/${pid}/members`),
+    enabled: Number.isFinite(pid),
+  })
 
   const versionsQuery = useQuery({
     queryKey: ['case-versions', pid, reviewTarget?.id],
@@ -363,13 +389,20 @@ export default function TestCaseList() {
   }
 
   const submitReviewMut = useMutation({
-    mutationFn: (id: number) =>
-      apiJson<TestCase>(`/api/v1/projects/${pid}/test-cases/${id}/submit-review`, {
+    mutationFn: (p: { id: number; reviewer_id?: number; due_at?: string | null }) =>
+      apiJson<TestCase>(`/api/v1/projects/${pid}/test-cases/${p.id}/submit-review`, {
         method: 'POST',
+        body: JSON.stringify({
+          reviewer_id: p.reviewer_id ?? null,
+          due_at: p.due_at || null,
+        }),
       }),
     onSuccess: (row) => {
       message.success('已提交评审')
       setReviewTarget(row)
+      setSubmitTarget(null)
+      setSubmitReviewer(undefined)
+      setSubmitDue('')
       refreshCase(row.id)
     },
     onError: (e) => message.error(errText(e)),
@@ -641,53 +674,68 @@ export default function TestCaseList() {
 
   function caseActions(r: TestCase, opts?: { showSteps?: boolean }) {
     const showSteps = opts?.showSteps ?? true
+    const moreItems: MenuProps['items'] = []
+    if (showSteps && (r.steps?.length ?? 0) > 0) {
+      moreItems.push({
+        key: 'steps',
+        label: '查看步骤',
+        onClick: () => setStepsModalCase(r),
+      })
+    }
+    if (
+      (r.lifecycle_status ?? r.status) === 'confirmed' &&
+      r.published_version_no !== (r.version_no ?? 1)
+    ) {
+      moreItems.push({
+        key: 'publish',
+        label: `发布 v${r.version_no ?? 1} 到正式库`,
+        onClick: () => publishMut.mutate(r.id),
+      })
+    }
+    moreItems.push({
+      key: 'review',
+      label: '版本/评审',
+      onClick: () => {
+        setReviewTarget(r)
+        setReviewComment('')
+      },
+    })
+    moreItems.push({ type: 'divider' })
+    moreItems.push({
+      key: 'delete',
+      danger: true,
+      label: '删除用例',
+      onClick: () =>
+        modal.confirm({
+          title: '确定删除该用例？',
+          content: '删除后不可恢复。',
+          okText: '删除',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => handleDelete(r.id),
+        }),
+    })
     return (
-      <Space size="small" wrap>
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          onClick={() => setAutomateCase(r)}
-        >
-          自动化执行
-        </Button>
-        {(r.linked_ui_case_count ?? 0) > 0 ? (
-          <Link to={`/projects/${pid}/ui-cases?manual_case_id=${r.id}`}>
-            <Button type="link" size="small" style={actionBtnStyle}>
-              查看 UI 用例
+      <div className="list-card-actions-row">
+        <Space size={4}>
+          <Button type="primary" size="small" onClick={() => setAutomateCase(r)}>
+            自动化执行
+          </Button>
+          {(r.linked_ui_case_count ?? 0) > 0 ? (
+            <Link to={`/projects/${pid}/ui-cases?manual_case_id=${r.id}`}>
+              <Button size="small">查看 UI 用例</Button>
+            </Link>
+          ) : null}
+          <Button type="text" size="small" style={actionBtnStyle} onClick={() => openEdit(r)}>
+            编辑
+          </Button>
+          <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+            <Button type="text" size="small" style={actionBtnStyle} aria-label="更多操作">
+              <EllipsisOutlined />
             </Button>
-          </Link>
-        ) : null}
-        {showSteps && (r.steps?.length ?? 0) > 0 ? (
-          <Button
-            type="link"
-            size="small"
-            style={actionBtnStyle}
-            onClick={() => setStepsModalCase(r)}
-          >
-            查看步骤
-          </Button>
-        ) : null}
-        <Button type="link" size="small" style={actionBtnStyle} onClick={() => openEdit(r)}>
-          编辑
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          onClick={() => {
-            setReviewTarget(r)
-            setReviewComment('')
-          }}
-        >
-          版本/评审
-        </Button>
-        <Popconfirm title="确定删除该用例？" onConfirm={() => void handleDelete(r.id)}>
-          <Button type="link" size="small" danger style={actionBtnStyle}>
-            删除
-          </Button>
-        </Popconfirm>
-      </Space>
+          </Dropdown>
+        </Space>
+      </div>
     )
   }
 
@@ -702,6 +750,13 @@ export default function TestCaseList() {
       dataIndex: 'lifecycle_status',
       width: 100,
       render: (v: string | undefined, r) => labelForLifecycleStatus(v ?? r.status),
+    },
+    {
+      title: '发布版本',
+      dataIndex: 'published_version_no',
+      width: 100,
+      render: (v: number | null | undefined) =>
+        v == null ? <span className="muted">未发布</span> : `v${v}`,
     },
     {
       title: '最近结果',
@@ -917,6 +972,11 @@ export default function TestCaseList() {
                       <span>{r.case_type || '—'}</span>
                       <span>{r.priority ?? '—'}</span>
                       <span>{r.module || '—'}</span>
+                      <span>
+                        {r.published_version_no
+                          ? `已发布 v${r.published_version_no}`
+                          : '未发布'}
+                      </span>
                       <span>{formatBeijing(r.updated_at)}</span>
                     </div>
                     <div className="list-card-actions">{caseActions(r)}</div>
@@ -941,6 +1001,54 @@ export default function TestCaseList() {
           </Spin>
         )}
       </div>
+      <Modal
+        title="提交用例评审"
+        open={Boolean(submitTarget)}
+        onCancel={() => setSubmitTarget(null)}
+        onOk={() => {
+          if (!submitTarget) return
+          submitReviewMut.mutate({
+            id: submitTarget.id,
+            reviewer_id: submitReviewer,
+            due_at: submitDue ? `${submitDue}:00` : null,
+          })
+        }}
+        confirmLoading={submitReviewMut.isPending}
+        okText="提交"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <p className="muted">评审结论会绑定当前版本 v{submitTarget?.version_no ?? 1}。</p>
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div>
+            <div className="muted" style={{ marginBottom: 4 }}>
+              评审人（可选）
+            </div>
+            <Select
+              allowClear
+              style={{ width: '100%' }}
+              placeholder="不指派则进入公共队列"
+              value={submitReviewer}
+              options={(membersQuery.data ?? []).map((m) => ({
+                value: m.user_id,
+                label: m.username,
+              }))}
+              onChange={setSubmitReviewer}
+            />
+          </div>
+          <div>
+            <div className="muted" style={{ marginBottom: 4 }}>
+              期望完成时间（可选）
+            </div>
+            <Input
+              type="datetime-local"
+              value={submitDue}
+              onChange={(e) => setSubmitDue(e.target.value)}
+            />
+          </div>
+        </Space>
+      </Modal>
+
       <Drawer
         title={reviewTarget ? `版本与评审 #${reviewTarget.id}` : '版本与评审'}
         open={Boolean(reviewTarget)}
@@ -983,7 +1091,11 @@ export default function TestCaseList() {
                 <Button
                   type="primary"
                   loading={submitReviewMut.isPending}
-                  onClick={() => submitReviewMut.mutate(reviewTarget.id)}
+                  onClick={() => {
+                    setSubmitTarget(reviewTarget)
+                    setSubmitReviewer(undefined)
+                    setSubmitDue('')
+                  }}
                 >
                   提交评审
                 </Button>

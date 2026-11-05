@@ -94,7 +94,10 @@ export default function Login() {
   return (
     <div className="auth-shell">
       <div className="card narrow">
-        <p className="auth-card-brand">LY测试平台</p>
+        <p className="auth-card-brand">
+          <img src="/logo-ip.png" alt="" className="auth-logo" />
+          LY测试平台
+        </p>
         <h1>登录</h1>
         <form onSubmit={onSubmit} className="form">
           <label>

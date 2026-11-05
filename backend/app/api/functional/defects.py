@@ -36,6 +36,8 @@ from app.schemas.functional.defect import (
     DefectHistoryOut,
     DefectOut,
     DefectRegressionIn,
+    RegressionTaskIn,
+    RegressionTaskOut,
     DefectSuggestionOut,
     DefectUpdate,
     DefectVerifyIn,
@@ -49,6 +51,7 @@ from app.services.file_storage import (
 from app.services.functional.defect_workflow import (
     apply_verification,
     change_status,
+    create_regression_task,
     close_blockers,
     dedupe_existing,
     link_regression_cycles,
@@ -462,6 +465,28 @@ def create_defect_from_cycle_item(
     )
     db.commit()
     return _out_one(db, project_id, _require_defect(db, project_id, row.id))
+
+
+@router.post("/regression-tasks", response_model=RegressionTaskOut, status_code=201)
+def create_regression_task_endpoint(
+    project_id: int,
+    payload: RegressionTaskIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _: ProjectMember = Depends(require_project_role("editor")),
+) -> RegressionTaskOut:
+    result = create_regression_task(
+        db,
+        project_id=project_id,
+        defect_ids=payload.defect_ids,
+        cycle_name=payload.cycle_name,
+        plan_id=payload.plan_id,
+        target_build=payload.target_build,
+        env_kind=payload.env_kind,
+        env_id=payload.env_id,
+        user_id=user.id,
+    )
+    return RegressionTaskOut(**result)
 
 
 @router.get("/{defect_id}", response_model=DefectOut)

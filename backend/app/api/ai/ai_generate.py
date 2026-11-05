@@ -22,12 +22,15 @@ from app.schemas.ai.ai_gen import (
     AiGenerateRequest,
     AiGenerateResponse,
     ChatMessage,
+    DesignTaskOut,
     PromptMessage,
     GeneratedCase,
     LlmOptionsOut,
 )
 from app.schemas.functional.testcase import TestCaseOut, clean_case_type, clean_precondition
-from app.services.ai import llm
+from app.models.ai.system_ai_settings import SystemLlmProfile
+from app.models.ai.ai_call_log import AiCallLog
+from app.services.ai import ai_config, llm
 from app.services.ai.fast_case_skill import FastCaseSkill, bundled_skill, enabled_for, validate_traced_case
 from app.services.ai.ai_gen_pipeline import (
     format_agent_done_message,
@@ -36,7 +39,11 @@ from app.services.ai.ai_gen_pipeline import (
     run_agent_pipeline_resume_cases,
 )
 from app.services.ai.case_review_dims import normalize_review_dims
-from app.services.ai.effective_ai_settings import describe_key_resolution, get_llm_runtime
+from app.services.ai.effective_ai_settings import (
+    describe_key_resolution,
+    get_llm_runtime,
+    runtime_for_profile,
+)
 from app.services.knowledge.rag_retrieval import rag_search_hits, upload_document_ids_for_library
 from app.services.functional.requirement_content import (
     requirement_assets_for_ai,
@@ -344,6 +351,48 @@ def _cases_from_llm_raw(
             ) from e2
 
 
+def _resolve_generation_runtime(
+    db: Session, project_id: int, body: AiGenerateRequest
+) -> tuple[object, ai_config.ResolvedAiConfig | None]:
+    """Resolve the project/action AI config for case design (R2)."""
+    override = {
+        key: value
+        for key, value in (
+            ("mode", body.ai_mode),
+            ("skill_version_id", body.skill_version_id),
+            ("model_profile_id", body.model_profile_id),
+        )
+        if value is not None
+    }
+    try:
+        resolved = ai_config.resolve(
+            db, project_id=project_id, action="case_design", override=override or None
+        )
+    except AppError:
+        if override:
+            raise
+        return get_llm_runtime(db), None
+    profile = db.get(SystemLlmProfile, resolved.model_profile_id)
+    if profile is None:
+        return get_llm_runtime(db), resolved
+    return runtime_for_profile(db, profile), resolved
+
+
+def _with_ai_context(gen, resolved):
+    if resolved is None:
+        yield from gen
+        return
+    with ai_config.bind_context(resolved):
+        yield from gen
+
+
+def _call_with_ai_context(fn, resolved):
+    if resolved is None:
+        return fn()
+    with ai_config.bind_context(resolved):
+        return fn()
+
+
 def _validate_generate_request(
     db: Session,
     project_id: int,
@@ -602,14 +651,23 @@ def _iter_generate_stream_events(
     use_llm_model: str,
     llm_cfg,
     images: list[tuple[str, bytes]] | None = None,
+    resolved: ai_config.ResolvedAiConfig | None = None,
 ) -> Iterator[str]:
     yield _sse_event("status", {"message": "等待中…"})
     db = SessionLocal()
+    tokens = ai_config.push_context(resolved) if resolved is not None else None
     try:
         if body.knowledge_library_id is not None:
             yield _sse_event("status", {"message": "正在检索知识库…"})
         context, _hits = _fetch_rag_context(db, project_id, body, chat_messages)
-        skill = FastCaseSkill.for_request(db, project_id, body, _hits, images)
+        skill = FastCaseSkill.for_request(
+            db,
+            project_id,
+            body,
+            _hits,
+            images,
+            force=bool(resolved is not None and resolved.mode == "skill"),
+        )
 
         if body.generate_mode == "agent":
             yield from _iter_agent_generate_stream_events(
@@ -641,7 +699,29 @@ def _iter_generate_stream_events(
         log.exception("用例生成流式失败 项目=%s", project_id)
         yield _sse_event("error", {"message": str(e)})
     finally:
+        if tokens is not None:
+            ai_config.reset_context(tokens)
         db.close()
+
+
+@router.get("/design-tasks", response_model=list[DesignTaskOut])
+def list_design_tasks(
+    project_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+    limit: int = 50,
+) -> list[DesignTaskOut]:
+    rows = (
+        db.query(AiCallLog)
+        .filter(
+            AiCallLog.project_id == project_id,
+            AiCallLog.action == "case_design",
+        )
+        .order_by(AiCallLog.id.desc())
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    return [DesignTaskOut.model_validate(row) for row in rows]
 
 
 @router.get("/llm-options", response_model=LlmOptionsOut)
@@ -650,14 +730,36 @@ def llm_options(
     db: Session = Depends(get_db),
     _: ProjectMember = Depends(require_project_role("viewer")),
 ) -> LlmOptionsOut:
-    allow = _llm_model_allowlist(db)
-    models = sorted(allow)
-    rt = get_llm_runtime(db)
-    default = (rt.model or "").strip()
-    if default not in allow and models:
-        default = models[0]
-    return LlmOptionsOut(default_model=default or (models[0] if models else ""), models=models,
-                         case_design_skill=bundled_skill()[0] if enabled_for(project_id) else None)
+    rt, resolved = _resolve_generation_runtime(db, project_id, AiGenerateRequest())
+    if resolved is not None and resolved.model_name:
+        profile = db.get(SystemLlmProfile, resolved.model_profile_id)
+        allow = {resolved.model_name}
+        if profile is not None:
+            allow |= {
+                p.strip() for p in (profile.allowed_models or "").split(",") if p.strip()
+            }
+        models = sorted(allow)
+        default = resolved.model_name
+    else:
+        allow = _llm_model_allowlist(db)
+        models = sorted(allow)
+        default = (rt.model or "").strip()
+        if default not in allow and models:
+            default = models[0]
+    return LlmOptionsOut(
+        default_model=default or (models[0] if models else ""),
+        models=models,
+        case_design_skill=(
+            bundled_skill()[0]
+            if enabled_for(project_id) or (resolved is not None and resolved.mode == "skill")
+            else None
+        ),
+        mode=resolved.mode if resolved else "model",
+        source=resolved.source if resolved else "system",
+        skill_name=resolved.skill_name if resolved else None,
+        skill_version=resolved.skill_version if resolved else None,
+        model_profile_id=resolved.model_profile_id if resolved else None,
+    )
 
 
 @router.post("/generate-testcases/stream")
@@ -668,7 +770,9 @@ def generate_testcases_stream(
     _: ProjectMember = Depends(require_project_role("editor")),
 ) -> StreamingResponse:
     use_llm_model, chat_messages, images = _validate_generate_request(db, project_id, body)
-    llm_cfg = get_llm_runtime(db)
+    llm_cfg, resolved = _resolve_generation_runtime(db, project_id, body)
+    if resolved is not None and not body.llm_model:
+        use_llm_model = (resolved.model_name or use_llm_model).strip() or use_llm_model
     return StreamingResponse(
         _iter_generate_stream_events(
             project_id=project_id,
@@ -677,6 +781,7 @@ def generate_testcases_stream(
             use_llm_model=use_llm_model,
             llm_cfg=llm_cfg,
             images=images,
+            resolved=resolved,
         ),
         media_type="text/event-stream",
         headers={
@@ -695,19 +800,31 @@ def generate_testcases(
     _: ProjectMember = Depends(require_project_role("editor")),
 ) -> AiGenerateResponse:
     use_llm_model, chat_messages, images = _validate_generate_request(db, project_id, body)
-    llm_cfg = get_llm_runtime(db)
+    llm_cfg, resolved = _resolve_generation_runtime(db, project_id, body)
+    if resolved is not None and not body.llm_model:
+        use_llm_model = (resolved.model_name or use_llm_model).strip() or use_llm_model
     context, _hits = _fetch_rag_context(db, project_id, body, chat_messages)
-    skill = FastCaseSkill.for_request(db, project_id, body, _hits, images)
+    skill = FastCaseSkill.for_request(
+        db,
+        project_id,
+        body,
+        _hits,
+        images,
+        force=bool(resolved is not None and resolved.mode == "skill"),
+    )
 
     if body.generate_mode == "agent":
-        for event in _agent_stream_events(
-            context=context,
-            chat_messages=chat_messages,
-            body=body,
-            use_llm_model=use_llm_model,
-            llm_cfg=llm_cfg,
-            images=images,
-            skill=skill,
+        for event in _with_ai_context(
+            _agent_stream_events(
+                context=context,
+                chat_messages=chat_messages,
+                body=body,
+                use_llm_model=use_llm_model,
+                llm_cfg=llm_cfg,
+                images=images,
+                skill=skill,
+            ),
+            resolved,
         ):
             event_type = event.get("type")
             if event_type == "clarification":
@@ -739,24 +856,34 @@ def generate_testcases(
         len(messages),
         len(images),
     )
-    raw = llm.chat_complete(messages, model=use_llm_model, cfg=llm_cfg, scene="用例生成")
-    cases = _cases_from_llm_raw(
-        raw,
-        messages,
-        use_llm_model=use_llm_model,
-        llm_cfg=llm_cfg,
-        skill=skill, previous=body.current_drafts,
+    raw = _call_with_ai_context(
+        lambda: llm.chat_complete(messages, model=use_llm_model, cfg=llm_cfg, scene="用例生成"),
+        resolved,
+    )
+    cases = _call_with_ai_context(
+        lambda: _cases_from_llm_raw(
+            raw,
+            messages,
+            use_llm_model=use_llm_model,
+            llm_cfg=llm_cfg,
+            skill=skill,
+            previous=body.current_drafts,
+        ),
+        resolved,
     )
     dims = normalize_review_dims(body.review_dimensions, enable=body.enable_case_review)
     review_result = None
     if dims:
-        for event in iter_case_review(
-            draft_cases=cases,
-            dims=dims,
-            use_llm_model=use_llm_model,
-            llm_cfg=llm_cfg,
-            context=context,
-            skill=skill,
+        for event in _with_ai_context(
+            iter_case_review(
+                draft_cases=cases,
+                dims=dims,
+                use_llm_model=use_llm_model,
+                llm_cfg=llm_cfg,
+                context=context,
+                skill=skill,
+            ),
+            resolved,
         ):
             if event.get("type") == "review_done":
                 cases = event["cases"]

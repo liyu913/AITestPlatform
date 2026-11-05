@@ -17,6 +17,8 @@ import {
   colorBorder,
   colorBorderSoft,
   colorPrimary,
+  colorPrimaryActive,
+  colorPrimaryHover,
   colorText,
   colorTextSecondary,
   controlHeight,
@@ -39,8 +41,11 @@ const queryClient = new QueryClient({
 const flatLightTheme = {
   token: {
     colorPrimary,
+    colorPrimaryHover,
+    colorPrimaryActive,
     colorInfo: colorPrimary,
     colorLink: colorPrimary,
+    colorLinkHover: colorPrimaryHover,
     colorTextBase: colorText,
     colorBgBase: colorBgSurface,
     colorBgLayout: colorBgPage,
@@ -49,17 +54,17 @@ const flatLightTheme = {
     borderRadius: radiusPx,
     controlHeight,
     fontFamily,
-    boxShadow: 'none',
-    boxShadowSecondary: 'none',
-    boxShadowTertiary: 'none',
+    boxShadow: '0 6px 18px rgba(26, 29, 38, 0.06)',
+    boxShadowSecondary: '0 10px 24px rgba(26, 29, 38, 0.08)',
+    boxShadowTertiary: '0 6px 8px rgba(26, 29, 38, 0.024)',
   },
   components: {
     Button: {
-      primaryShadow: 'none',
+      primaryShadow: '0 2px 6px rgba(254, 103, 2, 0.16)',
       defaultShadow: 'none',
       dangerShadow: 'none',
       controlHeight,
-      paddingInline: 12,
+      paddingInline: 14,
     },
     Input: {
       controlHeight,
@@ -70,21 +75,17 @@ const flatLightTheme = {
       optionSelectedBg: colorBgActive,
     },
     Card: {
-      boxShadow: 'none',
-      boxShadowTertiary: 'none',
+      boxShadowTertiary: '0 6px 8px rgba(26, 29, 38, 0.024)',
     },
     Modal: {
-      boxShadow: 'none',
       titleFontSize: 16,
     },
-    Drawer: {
-      boxShadow: 'none',
-    },
+    Drawer: {},
     Dropdown: {
-      boxShadow: 'none',
+      boxShadowSecondary: '0 10px 24px rgba(26, 29, 38, 0.08)',
     },
     Popover: {
-      boxShadow: 'none',
+      boxShadowSecondary: '0 10px 24px rgba(26, 29, 38, 0.08)',
     },
     Table: {
       headerBg: colorBgMuted,

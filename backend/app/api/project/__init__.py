@@ -1,4 +1,5 @@
 from app.api.project.dashboard import router as dashboard_router
+from app.api.project.evidence import router as evidence_router
 from app.api.project.executions import router as executions_router
 from app.api.project.modules import router as modules_router
 from app.api.project.projects import router as projects_router
@@ -10,6 +11,7 @@ routers = [
     dashboard_router,
     workbench_router,
     executions_router,
+    evidence_router,
     search_router,
     modules_router,
 ]

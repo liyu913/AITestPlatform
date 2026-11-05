@@ -149,6 +149,11 @@ class TestCaseOut(BaseModel):
     last_result: str | None = None
     last_result_at: datetime | None = None
     version_no: int = 1
+    published_version_id: int | None = None
+    published_version_no: int | None = None
+    published_at: datetime | None = None
+    assigned_reviewer_id: int | None = None
+    review_due_at: datetime | None = None
     archived_at: datetime | None = None
     tags_json: list[str] | None
     creator_id: int | None
@@ -195,3 +200,24 @@ class TestCaseReviewOut(BaseModel):
 
 class TestCaseArchiveIn(BaseModel):
     reason: str | None = Field(default=None, max_length=512)
+
+
+class TestCaseSubmitReviewIn(BaseModel):
+    reviewer_id: int | None = None
+    due_at: datetime | None = None
+
+
+class TestCasePublishIn(BaseModel):
+    version_no: int | None = Field(default=None, ge=1)
+
+
+class ReviewQueueItemOut(BaseModel):
+    case_id: int
+    title: str
+    version_no: int
+    submitted_at: datetime | None = None
+    submitted_by_id: int | None = None
+    review_count: int = 0
+    assigned_reviewer_id: int | None = None
+    assigned_reviewer_name: str | None = None
+    due_at: datetime | None = None

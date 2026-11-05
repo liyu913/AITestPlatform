@@ -74,7 +74,16 @@ type GeneratedCase = {
   steps: { order: number; action: string; expected?: string }[]
 }
 
-type LlmOptions = { default_model: string; models: string[]; case_design_skill?: string | null }
+type LlmOptions = {
+  default_model: string
+  models: string[]
+  case_design_skill?: string | null
+  mode?: string
+  source?: string
+  skill_name?: string | null
+  skill_version?: number | null
+  model_profile_id?: number | null
+}
 
 type PageRes<T> = {
   items: T[]
@@ -985,6 +994,25 @@ export default function AiGenerate() {
       <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
         大模型（必选）
       </Typography.Text>
+      {llmOpts.data ? (
+        <Typography.Text
+          type="secondary"
+          style={{ fontSize: 12, display: 'block', marginBottom: 8 }}
+        >
+          生效配置：
+          {llmOpts.data.source === 'action'
+            ? '动作绑定'
+            : llmOpts.data.source === 'project'
+              ? '项目默认'
+              : llmOpts.data.source === 'call'
+                ? '本次指定'
+                : '系统默认'}
+          {llmOpts.data.skill_name
+            ? ` · ${llmOpts.data.skill_name} v${llmOpts.data.skill_version}`
+            : ''}
+          {llmOpts.data.default_model ? ` · ${llmOpts.data.default_model}` : ''}
+        </Typography.Text>
+      ) : null}
       <Select
         showSearch
         optionFilterProp="label"
@@ -1168,7 +1196,28 @@ export default function AiGenerate() {
             </Space>
           </div>
           <p className="field-hint" style={{ marginTop: 0 }}>
-            {llmOpts.data?.case_design_skill ? '用例设计规则已启用。打开草稿可核对设计依据、修改逐步预期，确认后写入用例库。' : '在此预览生成的草稿，确认后写入用例库。'}
+            {llmOpts.data?.case_design_skill
+              ? '用例设计规则已启用。打开草稿可核对设计依据、修改逐步预期，确认后写入用例库。'
+              : '在此预览生成的草稿，确认后写入用例库。'}
+            {llmOpts.data ? (
+              <>
+                {' '}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  当前生效：
+                  {llmOpts.data.source === 'action'
+                    ? '动作绑定'
+                    : llmOpts.data.source === 'project'
+                      ? '项目默认'
+                      : llmOpts.data.source === 'call'
+                        ? '本次指定'
+                        : '系统默认'}
+                  {llmOpts.data.skill_name
+                    ? ` · ${llmOpts.data.skill_name} v${llmOpts.data.skill_version}`
+                    : ''}
+                  {llmOpts.data.default_model ? ` · ${llmOpts.data.default_model}` : ''}
+                </Typography.Text>
+              </>
+            ) : null}
           </p>
           <Tabs
             className="ai-generate-result-tabs"

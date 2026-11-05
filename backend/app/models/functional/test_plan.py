@@ -21,6 +21,12 @@ class TestPlan(Base, TimestampMixin):
         ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True, index=True
     )
     body_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheme_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_schemes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    scheme_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_scheme_versions.id", ondelete="SET NULL"), nullable=True
+    )
     creator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     cycles = relationship(
@@ -55,6 +61,8 @@ class TestCycle(Base, TimestampMixin):
     env_snapshot_json: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     credential_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     data_note: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None] = mapped_column(BeijingDateTime, nullable=True)
+    readiness_json: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
     plan = relationship("TestPlan", back_populates="cycles")
     items = relationship(
@@ -182,6 +190,8 @@ class TestCycleReport(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     summary_text: Mapped[str] = mapped_column(Text, default="")
+    narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
+    narrative_config: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     snapshot_json: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
     cycle = relationship("TestCycle", back_populates="reports")

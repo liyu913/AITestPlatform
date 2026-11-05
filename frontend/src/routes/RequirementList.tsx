@@ -1,6 +1,7 @@
 import {
   App,
   Button,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -14,7 +15,16 @@ import {
   Upload,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { MenuProps } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
+import {
+  DeleteOutlined,
+  EllipsisOutlined,
+  EyeOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -177,7 +187,7 @@ export default function RequirementList() {
   const { containerRef, scrollY } = useTableScrollY()
   const [viewMode, setViewMode] = useListViewMode('list-view:requirements')
 
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const { projectId } = useParams()
   const pid = Number(projectId)
@@ -836,56 +846,70 @@ export default function RequirementList() {
   const actionBtnStyle = { fontSize: 12, paddingInline: 4 }
 
   function requirementActions(r: Requirement) {
+    const moreItems: MenuProps['items'] = [
+      {
+        key: 'preview',
+        icon: <EyeOutlined />,
+        label: '预览附件',
+        disabled: !(r.has_attachments && r.attachments[0]),
+        onClick: () => openListPreview(r),
+      },
+      {
+        key: 'plan',
+        icon: <FileTextOutlined />,
+        label: '生成测试计划',
+        onClick: () => void openPlanDraft(r),
+      },
+      {
+        key: 'cases',
+        icon: <UnorderedListOutlined />,
+        label: '查看用例',
+        onClick: () => navigate(`../test-cases?requirement_id=${r.id}`),
+      },
+      { type: 'divider' },
+      {
+        key: 'delete',
+        danger: true,
+        icon: <DeleteOutlined />,
+        label: '删除需求',
+        onClick: () =>
+          modal.confirm({
+            title: '确定删除该需求？',
+            content: '删除后不可恢复。',
+            okText: '删除',
+            okButtonProps: { danger: true },
+            cancelText: '取消',
+            onOk: () => handleDelete(r.id),
+          }),
+      },
+    ]
     return (
-      <Space size="small" wrap>
-        <Button type="link" size="small" style={actionBtnStyle} onClick={() => openEdit(r)}>
-          编辑
-        </Button>
-        {r.has_attachments && r.attachments[0] ? (
-          <Button type="link" size="small" style={actionBtnStyle} onClick={() => openListPreview(r)}>
-            预览
+      <div className="list-card-actions-row">
+        <Space size={4}>
+          <Button
+            type="primary"
+            size="small"
+            loading={analyzeMut.isPending && analyzeMut.variables === r.id}
+            onClick={() => openAnalysis(r)}
+          >
+            需求分析
           </Button>
-        ) : null}
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          loading={analyzeMut.isPending && analyzeMut.variables === r.id}
-          onClick={() => openAnalysis(r)}
-        >
-          需求分析
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          loading={generatePlanMut.isPending && generatePlanMut.variables === r.id}
-          onClick={() => void openPlanDraft(r)}
-        >
-          测试计划
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          onClick={() => navigate(`../test-cases?requirement_id=${r.id}`)}
-        >
-          查看用例
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          style={actionBtnStyle}
-          onClick={() => navigate(`/projects/${pid}/test-cases/ai?requirement=${r.id}`)}
-        >
-          AI生成用例
-        </Button>
-        <Popconfirm title="确定删除该需求？" onConfirm={() => void handleDelete(r.id)}>
-          <Button type="link" size="small" danger style={actionBtnStyle}>
-            删除
+          <Button
+            size="small"
+            onClick={() => navigate(`/projects/${pid}/test-cases/ai?requirement=${r.id}`)}
+          >
+            AI 生成
           </Button>
-        </Popconfirm>
-      </Space>
+          <Button type="text" size="small" style={actionBtnStyle} onClick={() => openEdit(r)}>
+            编辑
+          </Button>
+          <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+            <Button type="text" size="small" style={actionBtnStyle} aria-label="更多操作">
+              <EllipsisOutlined />
+            </Button>
+          </Dropdown>
+        </Space>
+      </div>
     )
   }
 
@@ -933,7 +957,7 @@ export default function RequirementList() {
     {
       title: '操作',
       key: 'actions',
-      width: 440,
+      width: 260,
       render: (_: unknown, r) => requirementActions(r),
     },
   ]
@@ -954,11 +978,11 @@ export default function RequirementList() {
             <Input.Search
               allowClear
               placeholder="搜索标题、正文或文件名"
-              style={{ width: 280 }}
+              style={{ width: 300 }}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
-            <Button type="primary" onClick={openCreate}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建需求
             </Button>
           </Space>

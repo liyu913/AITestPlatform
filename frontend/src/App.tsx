@@ -14,6 +14,7 @@ import MemberList from './routes/MemberList'
 import ModuleList from './routes/ModuleList'
 import AdminAiSettings from './routes/AdminAiSettings'
 import AdminAiCallLogs from './routes/AdminAiCallLogs'
+import AdminSkillsPage from './routes/AdminSkillsPage'
 import AdminUserList from './routes/AdminUserList'
 import RequireSuperuser from './routes/RequireSuperuser'
 import EnvHub from './routes/EnvHub'
@@ -48,6 +49,11 @@ import TestCycleDetail from './routes/TestCycleDetail'
 import TestCaseRunList from './routes/TestCaseRunList'
 import TestCaseRunDetail from './routes/TestCaseRunDetail'
 import DefectList from './routes/DefectList'
+import DefectAnalysisPage from './routes/DefectAnalysisPage'
+import EvidencePage from './routes/EvidencePage'
+import SchemeList from './routes/SchemeList'
+import AiConfigPage from './routes/AiConfigPage'
+import ReviewQueue from './routes/ReviewQueue'
 import Coverage from './routes/Coverage'
 import Dashboard from './routes/Dashboard'
 import Workbench from './routes/Workbench'
@@ -134,6 +140,14 @@ export default function App() {
           }
         />
         <Route
+          path="/admin/skills"
+          element={
+            <RequireSuperuser>
+              <AdminSkillsPage />
+            </RequireSuperuser>
+          }
+        />
+        <Route
           path="/admin/ai-logs"
           element={
             <RequireSuperuser>
@@ -164,7 +178,12 @@ export default function App() {
           <Route path="executions" element={<ExecutionCenter />} />
           <Route path="reports" element={<Reports />} />
           <Route path="reports/:reportId" element={<ReportDetail />} />
+          <Route path="schemes" element={<SchemeList />} />
+          <Route path="ai-config" element={<AiConfigPage />} />
+          <Route path="reviews" element={<ReviewQueue />} />
           <Route path="defects" element={<DefectList />} />
+          <Route path="defect-analysis" element={<DefectAnalysisPage />} />
+          <Route path="evidence" element={<EvidencePage />} />
           <Route path="coverage" element={<Coverage />} />
           <Route path="envs" element={<EnvHub />} />
           <Route path="api-envs" element={<RedirectToEnvs type="api" />} />

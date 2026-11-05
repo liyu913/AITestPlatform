@@ -9,6 +9,9 @@ import {
   DashboardOutlined,
   DesktopOutlined,
   ExperimentOutlined,
+  FileProtectOutlined,
+  FileSearchOutlined,
+  RobotOutlined,
   FileTextOutlined,
   HistoryOutlined,
   MobileOutlined,
@@ -36,6 +39,8 @@ import { activeDomain, activeTab, DOMAIN_SECTIONS, DOMAINS, projectPath } from '
 const DOMAIN_ICONS: Record<string, ReactNode> = {
   workbench: <CompassOutlined />,
   dashboard: <DashboardOutlined />,
+  schemes: <FileProtectOutlined />,
+  'ai-config': <RobotOutlined />,
   requirements: <FileTextOutlined />,
   functional: <ExperimentOutlined />,
   knowledge: <BookOutlined />,
@@ -48,6 +53,8 @@ const DOMAIN_ICONS: Record<string, ReactNode> = {
   execution: <PlayCircleOutlined />,
   reports: <FileTextOutlined />,
   defects: <BugOutlined />,
+  'defect-analysis': <FileSearchOutlined />,
+  evidence: <FileSearchOutlined />,
   coverage: <PieChartOutlined />,
   modules: <AppstoreOutlined />,
   members: <TeamOutlined />,
@@ -223,6 +230,7 @@ export default function Layout() {
       <header className="topbar">
         <div className="topbar-brand-group">
           <Link to="/projects" className="brand">
+            <img src="/logo-ip.png" alt="" className="brand-logo" />
             LY测试平台
           </Link>
           <Dropdown menu={projectMenu} trigger={['click']} placement="bottomLeft">

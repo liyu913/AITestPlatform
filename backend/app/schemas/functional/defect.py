@@ -175,3 +175,19 @@ class DefectEvidenceOut(BaseModel):
     verification_note: str = ""
     verified_at: datetime | None = None
     history: list[DefectHistoryOut] = Field(default_factory=list)
+
+
+class RegressionTaskIn(BaseModel):
+    defect_ids: list[int] = Field(min_length=1)
+    cycle_name: str = Field(default="回归验证", min_length=1, max_length=512)
+    plan_id: int | None = None
+    target_build: str | None = Field(default=None, max_length=128)
+    env_kind: str | None = Field(default=None, max_length=16)
+    env_id: int | None = None
+
+
+class RegressionTaskOut(BaseModel):
+    cycle_id: int
+    plan_id: int
+    item_count: int
+    defect_ids: list[int]

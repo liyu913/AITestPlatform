@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.datetime_json import now_beijing
 from app.errors import AppError
 from app.models.functional.requirement import Requirement
+from app.models.functional.scheme import TestScheme, TestSchemeVersion
 from app.models.functional.test_plan import TestPlan
 from app.models.identity.user import User
 from app.schemas.functional.test_plan import (
@@ -262,6 +263,14 @@ def plan_to_out(db: Session, row: TestPlan, titles: dict[int, str] | None = None
             req = db.get(Requirement, row.requirement_id)
             title = req.title if req is not None else None
     content = row.body_md or None
+    scheme_name = None
+    scheme_version_no = None
+    if row.scheme_id is not None:
+        scheme = db.get(TestScheme, row.scheme_id)
+        scheme_name = scheme.name if scheme is not None else None
+    if row.scheme_version_id is not None:
+        version = db.get(TestSchemeVersion, row.scheme_version_id)
+        scheme_version_no = version.version_no if version is not None else None
     return TestPlanOut(
         id=row.id,
         project_id=row.project_id,
@@ -272,6 +281,10 @@ def plan_to_out(db: Session, row: TestPlan, titles: dict[int, str] | None = None
         status=row.status,
         requirement_id=row.requirement_id,
         requirement_title=title,
+        scheme_id=row.scheme_id,
+        scheme_version_id=row.scheme_version_id,
+        scheme_name=scheme_name,
+        scheme_version_no=scheme_version_no,
         body_md=content,
         creator_id=row.creator_id,
         created_at=row.created_at,

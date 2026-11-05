@@ -1,0 +1,203 @@
+{
+  "status": "incomplete",
+  "started_at": "2026-11-05T18:28:11",
+  "finished_at": "2026-11-05T18:28:15",
+  "config": {
+    "project_name": "R6 发布验收",
+    "base_url": "http://127.0.0.1:8000",
+    "build": "acceptance-build-1",
+    "scope": {
+      "manual": 20,
+      "api": 20,
+      "ui": 20,
+      "total": 60,
+      "requirements": 10
+    },
+    "automated_runs": {
+      "api": false,
+      "ui": false
+    },
+    "known_defects": 6,
+    "strict": true,
+    "password": "***"
+  },
+  "project_id": 8,
+  "cycle_id": 9,
+  "report_id": 6,
+  "counts": {
+    "items": 60,
+    "manual_recorded": 20,
+    "api_runs": 0,
+    "ui_runs": 0,
+    "defects": 6
+  },
+  "evaluation": {
+    "status": "incomplete",
+    "checks": [
+      {
+        "name": "scope_total",
+        "passed": true,
+        "detail": {
+          "expected": 60,
+          "actual": 60
+        }
+      },
+      {
+        "name": "manual_recorded",
+        "passed": true,
+        "detail": {
+          "recorded": 20
+        }
+      },
+      {
+        "name": "automated_executed",
+        "passed": false,
+        "detail": {
+          "expected": 40,
+          "executed": 0,
+          "note": "需 --run-api/--run-ui 且执行器可用"
+        }
+      },
+      {
+        "name": "known_defects_closed",
+        "passed": true,
+        "detail": {
+          "defects": [
+            {
+              "defect_id": 15,
+              "item_id": 100,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 16,
+              "item_id": 101,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 17,
+              "item_id": 102,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 18,
+              "item_id": 103,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 19,
+              "item_id": 104,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 20,
+              "item_id": 105,
+              "category": "product",
+              "status": "closed"
+            }
+          ]
+        }
+      },
+      {
+        "name": "requirement_coverage",
+        "passed": true,
+        "detail": {
+          "ratio": 1.0,
+          "requirements": 10
+        }
+      },
+      {
+        "name": "report_snapshot",
+        "passed": true,
+        "detail": {
+          "risks": 3
+        }
+      },
+      {
+        "name": "all_items_executed",
+        "passed": true,
+        "detail": {
+          "metrics": {
+            "flaky": 0,
+            "failed": 6,
+            "passed": 14,
+            "blocked": 0,
+            "running": 0,
+            "skipped": 0,
+            "untested": 40,
+            "pass_rate": 0.7,
+            "selected_total": 60,
+            "completion_rate": 0.3333,
+            "retried_to_pass": 0
+          }
+        }
+      },
+      {
+        "name": "no_pending_items",
+        "passed": false,
+        "detail": {
+          "untested": 40,
+          "running": 0
+        }
+      }
+    ],
+    "metrics": {
+      "flaky": 0,
+      "failed": 6,
+      "passed": 14,
+      "blocked": 0,
+      "running": 0,
+      "skipped": 0,
+      "untested": 40,
+      "pass_rate": 0.7,
+      "selected_total": 60,
+      "completion_rate": 0.3333,
+      "retried_to_pass": 0
+    },
+    "coverage_ratio": 1.0,
+    "defects": [
+      {
+        "defect_id": 15,
+        "item_id": 100,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 16,
+        "item_id": 101,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 17,
+        "item_id": 102,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 18,
+        "item_id": 103,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 19,
+        "item_id": 104,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 20,
+        "item_id": 105,
+        "category": "product",
+        "status": "closed"
+      }
+    ],
+    "report_id": 6
+  },
+  "summary": "通过率 70% · 完成比例 33% · 通过 14 / 失败 6 / 阻塞 0 / 未执行 40"
+}

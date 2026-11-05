@@ -108,6 +108,16 @@ def validate_cycle_item(db: Session, project_id: int, cycle_item_id: int | None)
         from app.errors import AppError
 
         raise AppError("bad_request", "执行项不存在或不属于当前项目", status_code=400)
+    cycle = db.get(TestCycle, row.cycle_id)
+    # Legacy batches were created as active before the readiness gate existed.
+    if cycle is None or (cycle.started_at is None and cycle.status != "active"):
+        from app.errors import AppError
+
+        raise AppError(
+            "conflict",
+            "批次尚未开始执行，请先在批次详情完成就绪检查并开始",
+            status_code=409,
+        )
     return row
 
 
@@ -234,9 +244,8 @@ def sync_attempt_from_run(db: Session, *, run_type: str, run_id: int) -> TestCyc
             summary=summary,
             at=now,
         )
-    cycle = db.get(TestCycle, item.cycle_id)
-    if cycle is not None:
-        cycle.updated_at = now
+    # Do not touch the shared cycle row here: concurrent runs of one batch
+    # would serialize on it and can deadlock with item/attempt updates.
     db.commit()
     db.refresh(attempt)
     return attempt

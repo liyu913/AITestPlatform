@@ -21,6 +21,8 @@ class ReportSummaryOut(BaseModel):
 
 class ReportOut(ReportSummaryOut):
     snapshot: dict | None = Field(default=None)
+    narrative: str = ""
+    narrative_config: dict | None = None
 
 
 class ReportExportOut(BaseModel):

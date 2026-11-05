@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.datetime_json import now_beijing
 from app.deps import get_current_user, get_db, require_project_role
 from app.errors import AppError
 from app.models.functional.testcase import TestCase, TestCaseReview, TestCaseStep, TestCaseVersion
@@ -14,7 +15,10 @@ from app.schemas.functional.testcase import (
     TestCaseArchiveIn,
     TestCaseCreate,
     TestCaseOut,
+    TestCasePublishIn,
     TestCaseReviewIn,
+    TestCaseSubmitReviewIn,
+    ReviewQueueItemOut,
     TestCaseReviewOut,
     TestCaseStepOut,
     TestCaseUpdate,
@@ -155,6 +159,11 @@ def _case_to_out(c: TestCase, *, linked_ui_case_count: int = 0) -> TestCaseOut:
         last_result=c.last_result,
         last_result_at=c.last_result_at,
         version_no=max(1, int(c.version_no or 1)),
+        published_version_id=c.published_version_id,
+        published_version_no=c.published_version_no,
+        published_at=c.published_at,
+        assigned_reviewer_id=c.assigned_reviewer_id,
+        review_due_at=c.review_due_at,
         archived_at=c.archived_at,
         tags_json=tags,
         creator_id=c.creator_id,
@@ -345,6 +354,60 @@ def create_case(
     return _case_to_out(c, linked_ui_case_count=_linked_ui_counts(db, project_id, [c.id]).get(c.id, 0))
 
 
+@router.get("/review-queue", response_model=list[ReviewQueueItemOut])
+def case_review_queue(
+    project_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> list[ReviewQueueItemOut]:
+    rows = (
+        db.query(TestCase)
+        .filter(
+            TestCase.project_id == project_id,
+            TestCase.lifecycle_status == LIFECYCLE_PENDING_REVIEW,
+        )
+        .order_by(TestCase.updated_at.desc(), TestCase.id.desc())
+        .all()
+    )
+    items: list[ReviewQueueItemOut] = []
+    for case in rows:
+        version = (
+            db.query(TestCaseVersion)
+            .filter(
+                TestCaseVersion.case_id == case.id,
+                TestCaseVersion.version_no == case.version_no,
+            )
+            .first()
+        )
+        review_count = (
+            db.query(func.count(TestCaseReview.id))
+            .filter(
+                TestCaseReview.case_id == case.id,
+                TestCaseReview.version_no == case.version_no,
+            )
+            .scalar()
+            or 0
+        )
+        assignee = (
+            db.query(User).filter(User.id == case.assigned_reviewer_id).first()
+            if case.assigned_reviewer_id is not None
+            else None
+        )
+        items.append(
+            ReviewQueueItemOut(
+                case_id=case.id,
+                title=case.title,
+                version_no=max(1, int(case.version_no or 1)),
+                submitted_at=version.created_at if version is not None else None,
+                submitted_by_id=version.created_by_id if version is not None else None,
+                review_count=int(review_count),
+                assigned_reviewer_id=case.assigned_reviewer_id,
+                assigned_reviewer_name=assignee.username if assignee else None,
+                due_at=case.review_due_at,
+            )
+        )
+    return items
+
 @router.get("/{case_id}", response_model=TestCaseOut)
 def get_case(
     project_id: int,
@@ -452,6 +515,38 @@ def update_case(
     return _case_to_out(c, linked_ui_case_count=_linked_ui_counts(db, project_id, [c.id]).get(c.id, 0))
 
 
+@router.post("/{case_id}/publish", response_model=TestCaseOut)
+def publish_case_version(
+    project_id: int,
+    case_id: int,
+    body: TestCasePublishIn,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+) -> TestCaseOut:
+    case = _require_case(db, project_id, case_id)
+    version_no = int(body.version_no or case.version_no or 1)
+    version = (
+        db.query(TestCaseVersion)
+        .filter(
+            TestCaseVersion.case_id == case.id,
+            TestCaseVersion.version_no == version_no,
+        )
+        .first()
+    )
+    if version is None:
+        raise AppError("not_found", "用例版本不存在", status_code=404)
+    if version.lifecycle_status != LIFECYCLE_CONFIRMED:
+        raise AppError("conflict", "只有评审通过的版本可以发布", status_code=409)
+    if case.published_version_no == version_no:
+        raise AppError("conflict", "该版本已发布", status_code=409)
+    case.published_version_id = version.id
+    case.published_version_no = version_no
+    case.published_at = now_beijing()
+    db.commit()
+    db.refresh(case)
+    counts = _linked_ui_counts(db, project_id, [case.id])
+    return _case_to_out(case, linked_ui_case_count=counts.get(case.id, 0))
+
 @router.delete("/{case_id}", status_code=204)
 def delete_case(
     project_id: int,
@@ -508,12 +603,27 @@ def get_case_version(
 def submit_case_review(
     project_id: int,
     case_id: int,
+    body: TestCaseSubmitReviewIn | None = None,
     db: Session = Depends(get_db),
     _: ProjectMember = Depends(require_project_role("editor")),
     user: User = Depends(get_current_user),
 ) -> TestCaseOut:
     c = _require_case(db, project_id, case_id)
+    if body is not None and body.reviewer_id is not None:
+        member = (
+            db.query(ProjectMember)
+            .filter(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == body.reviewer_id,
+            )
+            .first()
+        )
+        if member is None:
+            raise AppError("bad_request", "评审人不是项目成员", status_code=400)
     submit_for_review(c)
+    if body is not None:
+        c.assigned_reviewer_id = body.reviewer_id
+        c.review_due_at = body.due_at
     db.commit()
     c = _require_case(db, project_id, case_id)
     return _case_to_out(c)
@@ -539,6 +649,9 @@ def review_case_endpoint(
         reviewer_id=user.id,
         version_id=body.version_id,
     )
+    # The pending assignment is fulfilled once a decision is recorded.
+    c.assigned_reviewer_id = None
+    c.review_due_at = None
     db.commit()
     c = _require_case(db, project_id, case_id)
     return _case_to_out(c)

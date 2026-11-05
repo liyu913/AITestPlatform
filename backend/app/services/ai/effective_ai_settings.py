@@ -125,6 +125,17 @@ def _load_active_embedding(db: Session) -> SystemEmbeddingProfile | None:
     )
 
 
+def runtime_for_profile(db: Session, profile: SystemLlmProfile) -> LlmRuntime:
+    """Build a runtime from an explicit profile (used by per-action bindings)."""
+    key = _resolve_key(profile.api_key_enc, settings.llm_api_key, label="LLM")
+    return LlmRuntime(
+        api_base=_merge_str(profile.api_base, settings.llm_api_base),
+        api_key=key.value,
+        model=_merge_str(profile.model, settings.llm_model),
+        allowed_models_csv=_merge_str(profile.allowed_models, settings.llm_allowed_models),
+    )
+
+
 def get_llm_runtime(db: Session) -> LlmRuntime:
     global _cache_mono, _cached_llm
     now = time.monotonic()

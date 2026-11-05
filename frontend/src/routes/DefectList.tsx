@@ -4,6 +4,7 @@ import {
   Descriptions,
   Divider,
   Drawer,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -16,10 +17,16 @@ import {
   Upload,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { MenuProps } from 'antd'
+import {
+  DeleteOutlined,
+  EllipsisOutlined,
+  HistoryOutlined,
+} from '@ant-design/icons'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   DEFECT_CATEGORY_OPTIONS,
   DEFECT_STATUS_OPTIONS,
@@ -193,7 +200,30 @@ async function postAttachment(projectId: number, defectId: number, file: File): 
 
 export default function DefectList() {
   const { containerRef, scrollY } = useTableScrollY()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
+  const nav = useNavigate()
+  const [regressionOpen, setRegressionOpen] = useState(false)
+  const [regressionDefects, setRegressionDefects] = useState<number[]>([])
+  const [regressionName, setRegressionName] = useState('回归验证')
+  const [regressionBuild, setRegressionBuild] = useState('')
+  const regressionMut = useMutation({
+    mutationFn: () =>
+      apiJson<{ cycle_id: number }>(`/api/v1/projects/${pid}/defects/regression-tasks`, {
+        method: 'POST',
+        body: JSON.stringify({
+          defect_ids: regressionDefects,
+          cycle_name: regressionName.trim() || '回归验证',
+          target_build: regressionBuild.trim() || null,
+        }),
+      }),
+    onSuccess: (row) => {
+      message.success('回归任务已创建')
+      setRegressionOpen(false)
+      setRegressionDefects([])
+      nav(`/projects/${pid}/cycles/${row.cycle_id}`)
+    },
+    onError: (e) => message.error(errText(e)),
+  })
   const { projectId } = useParams()
   const pid = Number(projectId)
   const qc = useQueryClient()
@@ -468,6 +498,38 @@ export default function DefectList() {
     }
   }
 
+  function startEditDefect(row: Defect) {
+    setEditing(row)
+    setCaseKeyword('')
+    setCaseSearch('')
+    if (row.case_id && row.case_title) {
+      seenCaseTitles.current.set(row.case_id, row.case_title)
+    }
+    editForm.setFieldsValue({
+      title: row.title,
+      description: row.description,
+      severity: row.severity,
+      status: row.status,
+      category: row.category,
+      case_id: row.case_id ?? undefined,
+      expected_result: row.expected_result,
+      actual_result: row.actual_result,
+      environment: row.environment ?? undefined,
+      found_build: row.found_build ?? undefined,
+      fix_build: row.fix_build ?? undefined,
+    })
+    setEditOpen(true)
+  }
+
+  function startVerifyDefect(row: Defect) {
+    setVerifyTarget(row)
+    verifyForm.setFieldsValue({
+      result: 'passed',
+      fix_build: row.fix_build ?? '',
+      note: '',
+    })
+  }
+
   const columns: ColumnsType<Defect> = [
     { title: 'ID', dataIndex: 'id', width: 70 },
     { title: '标题', dataIndex: 'title', ellipsis: true },
@@ -522,83 +584,66 @@ export default function DefectList() {
     { title: '更新时间', dataIndex: 'updated_at', ellipsis: true, render: (v: string) => formatBeijing(v) },
     {
       title: '操作',
-      width: 260,
-      render: (_, row) => (
-        <Space size="small" wrap>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setEditing(row)
-              setCaseKeyword('')
-              setCaseSearch('')
-              if (row.case_id && row.case_title) {
-                seenCaseTitles.current.set(row.case_id, row.case_title)
-              }
-              editForm.setFieldsValue({
-                title: row.title,
-                description: row.description,
-                severity: row.severity,
-                status: row.status,
-                category: row.category,
-                case_id: row.case_id ?? undefined,
-                expected_result: row.expected_result,
-                actual_result: row.actual_result,
-                environment: row.environment ?? undefined,
-                found_build: row.found_build ?? undefined,
-                fix_build: row.fix_build ?? undefined,
-              })
-              setEditOpen(true)
-            }}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setVerifyTarget(row)
-              verifyForm.setFieldsValue({
-                result: 'passed',
-                fix_build: row.fix_build ?? '',
-                note: '',
-              })
-            }}
-          >
-            复测
-          </Button>
-          {row.status === 'closed' ? (
-            <Button
-              type="link"
-              size="small"
-              loading={statusMut.isPending}
-              onClick={() => statusMut.mutate({ id: row.id, status: 'reopened' })}
-            >
-              重新打开
-            </Button>
-          ) : (
-            <Button
-              type="link"
-              size="small"
-              loading={statusMut.isPending}
-              onClick={() => statusMut.mutate({ id: row.id, status: 'closed' })}
-            >
-              关闭
-            </Button>
-          )}
-          <Button type="link" size="small" onClick={() => setHistoryTarget(row)}>
-            历史
-          </Button>
-          <Button type="link" size="small" onClick={() => setDetailTarget(row)}>
-            详情
-          </Button>
-          <Popconfirm title="确认删除？" onConfirm={() => removeDefect(row.id)}>
-            <Button type="link" danger size="small">
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+      width: 320,
+      render: (_, row) => {
+        const moreItems: MenuProps['items'] = [
+          {
+            key: 'history',
+            icon: <HistoryOutlined />,
+            label: '状态历史',
+            onClick: () => setHistoryTarget(row),
+          },
+          { type: 'divider' },
+          {
+            key: 'delete',
+            danger: true,
+            icon: <DeleteOutlined />,
+            label: '删除缺陷',
+            onClick: () =>
+              modal.confirm({
+                title: '确认删除该缺陷？',
+                content: '删除后不可恢复。',
+                okText: '删除',
+                okButtonProps: { danger: true },
+                cancelText: '取消',
+                onOk: () => removeDefect(row.id),
+              }),
+          },
+        ]
+        return (
+          <div className="list-card-actions-row">
+            <Space size={4}>
+              <Button type="primary" size="small" onClick={() => setDetailTarget(row)}>
+                详情
+              </Button>
+              <Button size="small" onClick={() => startVerifyDefect(row)}>
+                复测
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                loading={statusMut.isPending}
+                onClick={() =>
+                  statusMut.mutate({
+                    id: row.id,
+                    status: row.status === 'closed' ? 'reopened' : 'closed',
+                  })
+                }
+              >
+                {row.status === 'closed' ? '重新打开' : '关闭'}
+              </Button>
+              <Button type="text" size="small" onClick={() => startEditDefect(row)}>
+                编辑
+              </Button>
+              <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+                <Button type="text" size="small" aria-label="更多操作">
+                  <EllipsisOutlined />
+                </Button>
+              </Dropdown>
+            </Space>
+          </div>
+        )
+      },
     },
   ]
 
@@ -626,6 +671,7 @@ export default function DefectList() {
           >
             新建缺陷
           </Button>
+          <Button onClick={() => setRegressionOpen(true)}>创建回归任务</Button>
           <Input.Search
             allowClear
             placeholder="搜索标题"
@@ -1122,6 +1168,46 @@ export default function DefectList() {
           <img src={previewUrl} alt="preview" style={{ maxWidth: '100%', display: 'block' }} />
         )}
       </Modal>
+      <Modal
+        title="创建回归任务"
+        open={regressionOpen}
+        onCancel={() => setRegressionOpen(false)}
+        onOk={() => regressionMut.mutate()}
+        confirmLoading={regressionMut.isPending}
+        okText="创建"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div>
+            <div className="muted" style={{ marginBottom: 4 }}>选择缺陷</div>
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="选择需要回归的缺陷"
+              value={regressionDefects}
+              onChange={setRegressionDefects}
+              options={(list.data?.items ?? []).map((d) => ({
+                value: d.id,
+                label: `#${d.id} ${d.title}`,
+              }))}
+            />
+          </div>
+          <div>
+            <div className="muted" style={{ marginBottom: 4 }}>批次名称</div>
+            <Input value={regressionName} onChange={(e) => setRegressionName(e.target.value)} />
+          </div>
+          <div>
+            <div className="muted" style={{ marginBottom: 4 }}>修复构建（可选）</div>
+            <Input
+              value={regressionBuild}
+              onChange={(e) => setRegressionBuild(e.target.value)}
+              placeholder="例如 build-1.2.3"
+            />
+          </div>
+        </Space>
+      </Modal>
+
     </div>
   )
 }

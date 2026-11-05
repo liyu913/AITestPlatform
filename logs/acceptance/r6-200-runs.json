@@ -1,0 +1,1228 @@
+{
+  "project_id": 11,
+  "cycle_id": 12,
+  "readiness": {
+    "cycle_id": 12,
+    "ready": true,
+    "checked_at": "2026-11-05T18:38:10.086437+08:00",
+    "items_total": 40,
+    "blockers": [],
+    "warnings": []
+  },
+  "started": "active",
+  "generated_at": "2026-11-05T18:43:59.206874",
+  "cases": 40,
+  "rounds": 5,
+  "total_runs": 200,
+  "passed": 200,
+  "pass_rate": 1.0,
+  "first_round_passed": 40,
+  "first_round_rate": 1.0,
+  "flaky_cases": 0,
+  "flaky_ids": [],
+  "statuses": {
+    "passed": 200
+  },
+  "runs": [
+    {
+      "case_id": 104,
+      "run_id": 56,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 105,
+      "run_id": 57,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 106,
+      "run_id": 58,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 107,
+      "run_id": 55,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 108,
+      "run_id": 59,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 109,
+      "run_id": 60,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 110,
+      "run_id": 61,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 111,
+      "run_id": 62,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 112,
+      "run_id": 63,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 113,
+      "run_id": 64,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 114,
+      "run_id": 65,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 115,
+      "run_id": 66,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 116,
+      "run_id": 67,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 117,
+      "run_id": 68,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 118,
+      "run_id": 69,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 119,
+      "run_id": 70,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 120,
+      "run_id": 71,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 121,
+      "run_id": 72,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 122,
+      "run_id": 73,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 123,
+      "run_id": 74,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 124,
+      "run_id": 75,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 125,
+      "run_id": 76,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 126,
+      "run_id": 77,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 127,
+      "run_id": 78,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 128,
+      "run_id": 79,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 129,
+      "run_id": 80,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 130,
+      "run_id": 81,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 131,
+      "run_id": 82,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 132,
+      "run_id": 83,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 133,
+      "run_id": 84,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 134,
+      "run_id": 85,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 135,
+      "run_id": 86,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 136,
+      "run_id": 87,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 137,
+      "run_id": 88,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 138,
+      "run_id": 89,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 139,
+      "run_id": 90,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 140,
+      "run_id": 91,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 141,
+      "run_id": 92,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 142,
+      "run_id": 93,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 143,
+      "run_id": 94,
+      "status": "passed",
+      "round": 1
+    },
+    {
+      "case_id": 104,
+      "run_id": 95,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 105,
+      "run_id": 97,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 106,
+      "run_id": 98,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 107,
+      "run_id": 96,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 108,
+      "run_id": 99,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 109,
+      "run_id": 100,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 110,
+      "run_id": 101,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 111,
+      "run_id": 102,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 112,
+      "run_id": 103,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 113,
+      "run_id": 104,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 114,
+      "run_id": 105,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 115,
+      "run_id": 106,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 116,
+      "run_id": 107,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 117,
+      "run_id": 108,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 118,
+      "run_id": 109,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 119,
+      "run_id": 110,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 120,
+      "run_id": 111,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 121,
+      "run_id": 112,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 122,
+      "run_id": 113,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 123,
+      "run_id": 114,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 124,
+      "run_id": 115,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 125,
+      "run_id": 116,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 126,
+      "run_id": 117,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 127,
+      "run_id": 118,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 128,
+      "run_id": 119,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 129,
+      "run_id": 120,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 130,
+      "run_id": 121,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 131,
+      "run_id": 122,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 132,
+      "run_id": 123,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 133,
+      "run_id": 124,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 134,
+      "run_id": 125,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 135,
+      "run_id": 126,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 136,
+      "run_id": 127,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 137,
+      "run_id": 128,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 138,
+      "run_id": 129,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 139,
+      "run_id": 130,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 140,
+      "run_id": 131,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 141,
+      "run_id": 132,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 142,
+      "run_id": 133,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 143,
+      "run_id": 134,
+      "status": "passed",
+      "round": 2
+    },
+    {
+      "case_id": 104,
+      "run_id": 135,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 105,
+      "run_id": 138,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 106,
+      "run_id": 136,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 107,
+      "run_id": 137,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 108,
+      "run_id": 139,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 109,
+      "run_id": 140,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 110,
+      "run_id": 141,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 111,
+      "run_id": 142,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 112,
+      "run_id": 143,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 113,
+      "run_id": 144,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 114,
+      "run_id": 145,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 115,
+      "run_id": 146,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 116,
+      "run_id": 147,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 117,
+      "run_id": 148,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 118,
+      "run_id": 149,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 119,
+      "run_id": 150,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 120,
+      "run_id": 151,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 121,
+      "run_id": 152,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 122,
+      "run_id": 153,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 123,
+      "run_id": 154,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 124,
+      "run_id": 155,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 125,
+      "run_id": 156,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 126,
+      "run_id": 157,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 127,
+      "run_id": 158,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 128,
+      "run_id": 159,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 129,
+      "run_id": 160,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 130,
+      "run_id": 161,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 131,
+      "run_id": 162,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 132,
+      "run_id": 163,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 133,
+      "run_id": 164,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 134,
+      "run_id": 165,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 135,
+      "run_id": 166,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 136,
+      "run_id": 167,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 137,
+      "run_id": 168,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 138,
+      "run_id": 169,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 139,
+      "run_id": 170,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 140,
+      "run_id": 171,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 141,
+      "run_id": 172,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 142,
+      "run_id": 173,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 143,
+      "run_id": 174,
+      "status": "passed",
+      "round": 3
+    },
+    {
+      "case_id": 104,
+      "run_id": 178,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 105,
+      "run_id": 175,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 106,
+      "run_id": 177,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 107,
+      "run_id": 176,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 108,
+      "run_id": 179,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 109,
+      "run_id": 180,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 110,
+      "run_id": 181,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 111,
+      "run_id": 182,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 112,
+      "run_id": 183,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 113,
+      "run_id": 184,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 114,
+      "run_id": 185,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 115,
+      "run_id": 186,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 116,
+      "run_id": 187,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 117,
+      "run_id": 188,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 118,
+      "run_id": 189,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 119,
+      "run_id": 190,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 120,
+      "run_id": 191,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 121,
+      "run_id": 192,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 122,
+      "run_id": 193,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 123,
+      "run_id": 194,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 124,
+      "run_id": 195,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 125,
+      "run_id": 196,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 126,
+      "run_id": 197,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 127,
+      "run_id": 198,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 128,
+      "run_id": 199,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 129,
+      "run_id": 200,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 130,
+      "run_id": 201,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 131,
+      "run_id": 202,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 132,
+      "run_id": 203,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 133,
+      "run_id": 204,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 134,
+      "run_id": 205,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 135,
+      "run_id": 206,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 136,
+      "run_id": 207,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 137,
+      "run_id": 208,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 138,
+      "run_id": 209,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 139,
+      "run_id": 210,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 140,
+      "run_id": 211,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 141,
+      "run_id": 212,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 142,
+      "run_id": 213,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 143,
+      "run_id": 214,
+      "status": "passed",
+      "round": 4
+    },
+    {
+      "case_id": 104,
+      "run_id": 217,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 105,
+      "run_id": 218,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 106,
+      "run_id": 215,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 107,
+      "run_id": 216,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 108,
+      "run_id": 219,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 109,
+      "run_id": 220,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 110,
+      "run_id": 221,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 111,
+      "run_id": 222,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 112,
+      "run_id": 223,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 113,
+      "run_id": 224,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 114,
+      "run_id": 225,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 115,
+      "run_id": 226,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 116,
+      "run_id": 227,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 117,
+      "run_id": 228,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 118,
+      "run_id": 229,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 119,
+      "run_id": 230,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 120,
+      "run_id": 231,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 121,
+      "run_id": 232,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 122,
+      "run_id": 233,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 123,
+      "run_id": 234,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 124,
+      "run_id": 235,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 125,
+      "run_id": 236,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 126,
+      "run_id": 237,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 127,
+      "run_id": 238,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 128,
+      "run_id": 239,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 129,
+      "run_id": 240,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 130,
+      "run_id": 241,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 131,
+      "run_id": 242,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 132,
+      "run_id": 243,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 133,
+      "run_id": 244,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 134,
+      "run_id": 245,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 135,
+      "run_id": 246,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 136,
+      "run_id": 247,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 137,
+      "run_id": 248,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 138,
+      "run_id": 249,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 139,
+      "run_id": 250,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 140,
+      "run_id": 251,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 141,
+      "run_id": 252,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 142,
+      "run_id": 253,
+      "status": "passed",
+      "round": 5
+    },
+    {
+      "case_id": 143,
+      "run_id": 254,
+      "status": "passed",
+      "round": 5
+    }
+  ]
+}

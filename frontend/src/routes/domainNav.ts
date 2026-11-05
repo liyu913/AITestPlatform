@@ -41,6 +41,14 @@ export const DOMAINS: DomainNav[] = [
     tabs: [],
   },
   {
+    key: 'schemes',
+    label: '测试方案',
+    section: '测试资产',
+    to: 'schemes',
+    matches: ['schemes'],
+    tabs: [],
+  },
+  {
     key: 'requirements',
     label: '需求管理',
     section: '测试资产',
@@ -57,6 +65,7 @@ export const DOMAINS: DomainNav[] = [
     tabs: [
       { label: '用例管理', to: 'test-cases', matches: ['test-cases'] },
       { label: 'AI 生成用例', to: 'test-cases/ai', matches: ['test-cases/ai'] },
+      { label: '用例评审', to: 'reviews', matches: ['reviews'] },
     ],
   },
   {
@@ -106,6 +115,14 @@ export const DOMAINS: DomainNav[] = [
     tabs: [],
   },
   {
+    key: 'evidence',
+    label: '执行证据',
+    section: '执行',
+    to: 'evidence',
+    matches: ['evidence'],
+    tabs: [],
+  },
+  {
     key: 'execution',
     label: '执行中心',
     section: '执行',
@@ -123,6 +140,14 @@ export const DOMAINS: DomainNav[] = [
       { label: '计划列表', to: 'test-plans', matches: ['test-plans', 'cycles'] },
       { label: '功能执行记录', to: 'test-case-runs', matches: ['test-case-runs'] },
     ],
+  },
+  {
+    key: 'defect-analysis',
+    label: '缺陷分析',
+    section: '质量',
+    to: 'defect-analysis',
+    matches: ['defect-analysis'],
+    tabs: [],
   },
   {
     key: 'defects',
@@ -146,6 +171,14 @@ export const DOMAINS: DomainNav[] = [
     section: '质量',
     to: 'coverage',
     matches: ['coverage'],
+    tabs: [],
+  },
+  {
+    key: 'ai-config',
+    label: 'AI 与 Skill',
+    section: '设置',
+    to: 'ai-config',
+    matches: ['ai-config'],
     tabs: [],
   },
   {

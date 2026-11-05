@@ -60,8 +60,11 @@ class FastCaseSkill:
 
     @classmethod
     def for_request(cls, db: Session, project_id: int, body: AiGenerateRequest,
-                    hits: list[RagHitOut], images: list[tuple[str, bytes]] | None):
-        if not enabled_for(project_id) and not any(c.design_trace for c in body.current_drafts):
+                    hits: list[RagHitOut], images: list[tuple[str, bytes]] | None,
+                    force: bool = False):
+        if not force and not enabled_for(project_id) and not any(
+            c.design_trace for c in body.current_drafts
+        ):
             return None
         sources = {}
         if body.requirement_id is not None:

@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.datetime_json import BeijingDateTime
@@ -35,3 +35,12 @@ class AiCallLog(Base):
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    action: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    skill_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ai_skill_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    binding_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    config_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resolved_config: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)

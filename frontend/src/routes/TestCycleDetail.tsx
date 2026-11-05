@@ -21,6 +21,7 @@ import {
 } from '../constants/workflow'
 import { apiFetch, apiJson, ApiError } from '../api/client'
 import PageBanner from './PageBanner'
+import { formatBeijing } from '../utils/datetime'
 
 type DefectSuggestion = {
   category: string
@@ -47,6 +48,7 @@ type TestCycle = {
   target_build?: string | null
   env_kind?: string | null
   env_id?: number | null
+  started_at?: string | null
   env_snapshot_json?: { name?: string | null; base_url?: string | null } | null
 }
 
@@ -55,6 +57,15 @@ type Attachment = {
   filename: string
   mime: string
   size_bytes: number
+}
+
+type CycleReadiness = {
+  cycle_id: number
+  ready: boolean
+  checked_at: string
+  items_total: number
+  blockers: { item_id: number | null; case_id: number | null; title: string | null; reason: string }[]
+  warnings: string[]
 }
 
 type CycleItem = {
@@ -126,6 +137,26 @@ export default function TestCycleDetail() {
     if (resultFilter) sp.set('result', resultFilter)
     return `/api/v1/projects/${pid}/cycles/${cid}/items/?${sp}`
   }, [pid, cid, resultFilter])
+
+  const readiness = useQuery({
+    queryKey: ['cycle-readiness', pid, cid],
+    queryFn: () => apiJson<CycleReadiness>(`/api/v1/projects/${pid}/cycles/${cid}/readiness`),
+    enabled: Number.isFinite(pid) && Number.isFinite(cid),
+  })
+
+  const startCycle = useMutation({
+    mutationFn: () =>
+      apiJson<{ cycle: TestCycle; readiness: CycleReadiness }>(
+        `/api/v1/projects/${pid}/cycles/${cid}/start`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      message.success('批次已开始执行')
+      void qc.invalidateQueries({ queryKey: ['cycle-readiness', pid, cid] })
+      void qc.invalidateQueries({ queryKey: ['test-cycle', pid, cid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
 
   const items = useQuery({
     queryKey: ['cycle-items', pid, cid, resultFilter],
@@ -210,6 +241,19 @@ export default function TestCycleDetail() {
     onSuccess: () => {
       message.success('缺陷已创建')
       qc.invalidateQueries({ queryKey: ['defects', pid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
+  const createAnalysis = useMutation({
+    mutationFn: (itemId: number) =>
+      apiJson<{ id: number }>(`/api/v1/projects/${pid}/defect-analyses/`, {
+        method: 'POST',
+        body: JSON.stringify({ cycle_item_id: itemId, category: 'pending' }),
+      }),
+    onSuccess: () => {
+      message.success('已创建分析记录')
+      nav(`/projects/${pid}/defect-analysis`)
     },
     onError: (e) => message.error(errText(e)),
   })
@@ -407,15 +451,25 @@ export default function TestCycleDetail() {
             </Button>
           </Upload>
           {row.result === 'failed' && (
-            <Button
-              type="link"
-              size="small"
-              danger
-              loading={createDefect.isPending}
-              onClick={() => void confirmDefectDraft(row.id)}
-            >
-              建缺陷
-            </Button>
+            <>
+              <Button
+                type="link"
+                size="small"
+                loading={createAnalysis.isPending}
+                onClick={() => createAnalysis.mutate(row.id)}
+              >
+                分析
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                danger
+                loading={createDefect.isPending}
+                onClick={() => void confirmDefectDraft(row.id)}
+              >
+                建缺陷
+              </Button>
+            </>
           )}
         </Space>
       ),
@@ -466,6 +520,61 @@ export default function TestCycleDetail() {
           }
         />
       </Space>
+      {c ? (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
+            <Space wrap>
+              <strong>执行就绪</strong>
+              <Tag color={readiness.data?.ready ? 'success' : 'warning'}>
+                {readiness.data ? (readiness.data.ready ? '已就绪' : '存在阻塞') : '检查中'}
+              </Tag>
+              {c.started_at ? (
+                <span className="muted">开始于 {formatBeijing(c.started_at)}</span>
+              ) : null}
+            </Space>
+            <Space>
+              <Button
+                onClick={() => void readiness.refetch()}
+                loading={readiness.isFetching}
+                size="small"
+              >
+                重新检查
+              </Button>
+              <Button
+                type="primary"
+                size="small"
+                disabled={Boolean(c.started_at) || !(readiness.data?.ready ?? false)}
+                loading={startCycle.isPending}
+                onClick={() => startCycle.mutate()}
+              >
+                {c.started_at ? '已开始' : '开始执行'}
+              </Button>
+            </Space>
+          </Space>
+          {readiness.data && readiness.data.blockers.length > 0 ? (
+            <ul style={{ margin: '8px 0 0', paddingInlineStart: 18 }}>
+              {readiness.data.blockers.map((b) => (
+                <li key={`${b.item_id}-${b.reason}`} className="muted">
+                  {b.item_id ? `计划项 #${b.item_id} · ` : ''}
+                  {b.case_id ? (
+                    <Link to={`/projects/${pid}/test-cases?case=${b.case_id}`}>
+                      {b.title || `用例 #${b.case_id}`}
+                    </Link>
+                  ) : (
+                    b.title || '批次'
+                  )}
+                  ：{b.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {readiness.data && readiness.data.warnings.length > 0 ? (
+            <p className="muted" style={{ margin: '8px 0 0' }}>
+              提示：{readiness.data.warnings.join('；')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {c && (
         <div className="muted" style={{ marginBottom: 12 }}>
           共 {c.item_count} · 通过 {c.passed_count} · 失败 {c.failed_count} · 阻塞{' '}

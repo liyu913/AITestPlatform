@@ -19,9 +19,11 @@ from app.models.functional.test_plan import (
     TestPlan,
 )
 from app.models.ui_automation.ui_automation import UiCase, UiEnvironment, UiSuite
+from app.services.functional.scheme_service import require_scheme_version
 from app.services.functional.test_plan_draft import plan_to_out, requirement_titles
 from app.models.identity.user import User
 from app.schemas.page import Page
+from app.services.functional import cycle_readiness
 from app.schemas.functional.test_plan import (
     CycleAttemptCreate,
     CycleAttemptOut,
@@ -32,6 +34,8 @@ from app.schemas.functional.test_plan import (
     ExecutionAttachmentOut,
     TestCycleCreate,
     TestCycleOut,
+    CycleReadinessOut,
+    CycleStartOut,
     TestCycleUpdate,
     TestPlanCreate,
     TestPlanOut,
@@ -168,6 +172,7 @@ def _cycle_to_out(db: Session, cycle: TestCycle) -> TestCycleOut:
         else None,
         credential_ref=cycle.credential_ref,
         data_note=cycle.data_note or "",
+        started_at=cycle.started_at,
         created_at=cycle.created_at,
         updated_at=cycle.updated_at,
         **stats,
@@ -276,9 +281,17 @@ def create_plan(
     _: ProjectMember = Depends(require_project_role("editor")),
     user: User = Depends(get_current_user),
 ) -> TestPlanOut:
+    scheme_id = None
+    if body.scheme_version_id is not None:
+        version = require_scheme_version(
+            db, project_id=project_id, version_id=body.scheme_version_id
+        )
+        scheme_id = version.scheme_id
     row = TestPlan(
         project_id=project_id,
         name=body.name.strip(),
+        scheme_id=scheme_id,
+        scheme_version_id=body.scheme_version_id,
         version=body.version.strip() if body.version else None,
         iteration=body.iteration.strip() if body.iteration else None,
         description=body.description,
@@ -319,6 +332,17 @@ def update_plan(
         data["version"] = data["version"].strip() or None
     if "iteration" in data and data["iteration"] is not None:
         data["iteration"] = data["iteration"].strip() or None
+    if "scheme_version_id" in data:
+        version_id = data.pop("scheme_version_id")
+        if version_id is None:
+            row.scheme_id = None
+            row.scheme_version_id = None
+        else:
+            version = require_scheme_version(
+                db, project_id=project_id, version_id=version_id
+            )
+            row.scheme_id = version.scheme_id
+            row.scheme_version_id = version.id
     for k, v in data.items():
         setattr(row, k, v)
     db.commit()
@@ -386,6 +410,32 @@ def create_cycle(
     db.commit()
     db.refresh(row)
     return _cycle_to_out(db, row)
+
+
+@router.get("/cycles/{cycle_id}/readiness", response_model=CycleReadinessOut)
+def cycle_readiness_check(
+    project_id: int,
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> CycleReadinessOut:
+    cycle = _require_cycle(db, project_id, cycle_id)
+    return CycleReadinessOut(**cycle_readiness.evaluate(db, cycle))
+
+
+@router.post("/cycles/{cycle_id}/start", response_model=CycleStartOut)
+def start_cycle(
+    project_id: int,
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+) -> CycleStartOut:
+    cycle = _require_cycle(db, project_id, cycle_id)
+    readiness = cycle_readiness.start_cycle(db, cycle)
+    updated = _require_cycle(db, project_id, cycle_id)
+    return CycleStartOut(
+        cycle=_cycle_to_out(db, updated), readiness=CycleReadinessOut(**readiness)
+    )
 
 
 @router.get("/cycles/{cycle_id}", response_model=TestCycleOut)

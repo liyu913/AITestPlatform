@@ -97,12 +97,21 @@ class AiGenerateRequest(BaseModel):
     agent_artifacts: AgentArtifacts | None = None
     enable_case_review: bool = False
     review_dimensions: list[ReviewDimensionConfig] = Field(default_factory=list)
+    # Per-call AI config override (R2); omitted means use the project binding.
+    ai_mode: Literal["model", "skill"] | None = None
+    skill_version_id: int | None = None
+    model_profile_id: int | None = None
 
 
 class LlmOptionsOut(BaseModel):
     case_design_skill: str | None = None
     default_model: str
     models: list[str]
+    mode: str = "model"
+    source: str = "system"
+    skill_name: str | None = None
+    skill_version: int | None = None
+    model_profile_id: int | None = None
 
 
 class AiGenerateResponse(BaseModel):
@@ -147,3 +156,18 @@ class AiSessionSummary(BaseModel):
     updated_at: datetime.datetime
     message_count: int
     draft_count: int
+
+
+class DesignTaskOut(BaseModel):
+    id: int
+    created_at: datetime.datetime
+    model: str | None = None
+    status: str
+    latency_ms: int | None = None
+    total_tokens: int | None = None
+    action: str | None = None
+    config_source: str | None = None
+    skill_version_id: int | None = None
+    resolved_config: dict | None = None
+
+    model_config = {"from_attributes": True}

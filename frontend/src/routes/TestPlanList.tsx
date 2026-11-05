@@ -33,6 +33,10 @@ type TestPlan = {
   status: string
   requirement_id: number | null
   requirement_title: string | null
+  scheme_id: number | null
+  scheme_version_id: number | null
+  scheme_name: string | null
+  scheme_version_no: number | null
   creator_id: number | null
   created_at: string
   updated_at: string
@@ -65,6 +69,7 @@ export default function TestPlanList() {
     iteration?: string
     description?: string
     status: string
+    scheme_version_id?: number
   }>()
 
   const list = useQuery({
@@ -77,6 +82,21 @@ export default function TestPlanList() {
     enabled: Number.isFinite(pid),
   })
 
+  const [schemeId, setSchemeId] = useState<number | undefined>()
+  const schemesQuery = useQuery({
+    queryKey: ['schemes', pid, 'picker'],
+    queryFn: () => apiJson<{ items: { id: number; name: string }[] }>(`/api/v1/projects/${pid}/schemes/?page_size=100`),
+    enabled: Number.isFinite(pid),
+  })
+  const schemeVersionsQuery = useQuery({
+    queryKey: ['scheme-versions', pid, schemeId],
+    queryFn: () =>
+      apiJson<{ id: number; version_no: number; change_note: string | null }[]>(
+        `/api/v1/projects/${pid}/schemes/${schemeId}/versions`,
+      ),
+    enabled: Boolean(schemeId),
+  })
+
   const createMut = useMutation({
     mutationFn: (values: {
       name: string
@@ -84,6 +104,7 @@ export default function TestPlanList() {
       iteration?: string
       description?: string
       status: string
+      scheme_version_id?: number
     }) =>
       apiJson<TestPlan>(`/api/v1/projects/${pid}/test-plans/`, {
         method: 'POST',
@@ -93,6 +114,7 @@ export default function TestPlanList() {
           iteration: values.iteration?.trim() || null,
           description: values.description?.trim() || null,
           status: values.status,
+          scheme_version_id: values.scheme_version_id ?? null,
         }),
       }),
     onSuccess: () => {
@@ -129,6 +151,14 @@ export default function TestPlanList() {
     },
     { title: '版本', dataIndex: 'version', width: 110, render: (v) => v || '—' },
     { title: '迭代', dataIndex: 'iteration', width: 120, render: (v) => v || '—' },
+    {
+      title: '测试方案',
+      dataIndex: 'scheme_name',
+      width: 180,
+      ellipsis: true,
+      render: (v: string | null, row) =>
+        v ? `${v}${row.scheme_version_no ? ` · v${row.scheme_version_no}` : ''}` : '—',
+    },
     {
       title: '来源需求',
       dataIndex: 'requirement_title',
@@ -225,6 +255,31 @@ export default function TestPlanList() {
           </Form.Item>
           <Form.Item name="status" label="状态">
             <Select options={PLAN_STATUS_OPTIONS} />
+          </Form.Item>
+          <Form.Item label="测试方案">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Select
+                allowClear
+                placeholder="选择方案（可选）"
+                options={(schemesQuery.data?.items ?? []).map((s) => ({ value: s.id, label: s.name }))}
+                value={schemeId}
+                onChange={(v) => {
+                  setSchemeId(v)
+                  form.setFieldValue('scheme_version_id', undefined)
+                }}
+              />
+              <Form.Item name="scheme_version_id" noStyle>
+                <Select
+                  allowClear
+                  disabled={!schemeId}
+                  placeholder="选择方案版本"
+                  options={(schemeVersionsQuery.data ?? []).map((v) => ({
+                    value: v.id,
+                    label: `v${v.version_no}${v.change_note ? ` · ${v.change_note}` : ''}`,
+                  }))}
+                />
+              </Form.Item>
+            </Space>
           </Form.Item>
           <Form.Item name="description" label="说明">
             <Input.TextArea rows={3} />

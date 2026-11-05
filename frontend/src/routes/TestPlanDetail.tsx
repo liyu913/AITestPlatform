@@ -35,6 +35,10 @@ type TestPlan = {
   status: string
   requirement_id: number | null
   requirement_title: string | null
+  scheme_id: number | null
+  scheme_version_id: number | null
+  scheme_name: string | null
+  scheme_version_no: number | null
   body_md: string | null
 }
 
@@ -174,6 +178,23 @@ export default function TestPlanDetail() {
   return (
     <div>
       <PageBanner title={p ? `计划：${p.name}` : '测试计划'} />
+      {p?.requirement_id ? (
+        <p className="muted" style={{ marginTop: 0 }}>
+          来源需求：
+          <Link to={`/projects/${pid}/requirements?requirement=${p.requirement_id}`}>
+            {p.requirement_title || `#${p.requirement_id}`}
+          </Link>
+        </p>
+      ) : null}
+      {p?.scheme_name ? (
+        <p className="muted" style={{ marginTop: 0 }}>
+          引用方案：
+          <Link to={`/projects/${pid}/schemes`}>
+            {p.scheme_name}
+            {p.scheme_version_no ? ` · v${p.scheme_version_no}` : ''}
+          </Link>
+        </p>
+      ) : null}
       <Space style={{ marginBottom: 16 }} wrap>
         <Link to={`/projects/${pid}/test-plans`}>
           <Button>返回计划列表</Button>

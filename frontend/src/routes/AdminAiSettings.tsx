@@ -12,6 +12,7 @@ import {
   Tabs,
   Tag,
 } from 'antd'
+import { Link } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -716,7 +717,12 @@ export default function AdminAiSettings() {
 
   return (
     <div className="card">
-      <h1>系统 AI 配置</h1>
+      <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
+        <h1 style={{ marginBottom: 0 }}>系统 AI 配置</h1>
+        <Link to="/admin/skills">
+          <Button>Skill 版本管理</Button>
+        </Link>
+      </Space>
       <p className="field-hint">
         可配置多套大模型 / 向量模型 / Midscene，并分别启用其中一套。Midscene 用于 UI 探索看截图（API Base、模型名、model family、API Key）。未填写密钥且库中无密钥时回退服务器环境变量。修改
         向量模型维度可能影响已有 Milvus 向量索引，请谨慎操作。

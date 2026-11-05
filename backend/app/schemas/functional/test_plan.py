@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class TestPlanCreate(BaseModel):
     name: str = Field(min_length=1, max_length=512)
+    scheme_version_id: int | None = Field(default=None, ge=1)
     version: str | None = Field(default=None, max_length=128)
     iteration: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=65535)
@@ -14,6 +15,7 @@ class TestPlanCreate(BaseModel):
 
 class TestPlanUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=512)
+    scheme_version_id: int | None = Field(default=None, ge=1)
     version: str | None = Field(default=None, max_length=128)
     iteration: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=65535)
@@ -31,6 +33,10 @@ class TestPlanOut(BaseModel):
     status: str
     requirement_id: int | None = None
     requirement_title: str | None = None
+    scheme_id: int | None = None
+    scheme_version_id: int | None = None
+    scheme_name: str | None = None
+    scheme_version_no: int | None = None
     body_md: str | None = None
     creator_id: int | None
     created_at: datetime
@@ -106,6 +112,7 @@ class TestCycleOut(BaseModel):
     env_snapshot_json: dict | None = None
     credential_ref: str | None = None
     data_note: str = ""
+    started_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     item_count: int = 0
@@ -224,3 +231,29 @@ class RequirementCoverageOut(BaseModel):
     untested: int
     coverage_ratio: float
     blind: bool
+
+
+class ReadinessBlocker(BaseModel):
+    item_id: int | None = None
+    case_id: int | None = None
+    title: str | None = None
+    reason: str
+
+
+class CycleReadinessOut(BaseModel):
+    cycle_id: int
+    ready: bool
+    checked_at: str
+    items_total: int
+    blockers: list[ReadinessBlocker] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class CycleStartOut(BaseModel):
+    cycle: TestCycleOut
+    readiness: CycleReadinessOut
+
+
+class TestCaseSubmitReviewIn(BaseModel):
+    reviewer_id: int | None = None
+    due_at: datetime | None = None

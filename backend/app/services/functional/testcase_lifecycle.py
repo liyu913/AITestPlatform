@@ -295,6 +295,11 @@ def review_case(
         version = ensure_baseline_version(db, case, source="review", actor_id=reviewer_id)
 
     apply_lifecycle(case, _REVIEW_DECISIONS[normalized])
+    # The review decision is bound to this version; mirror it so the formal
+    # publish pointer can rely on the version state as well as the record.
+    version.lifecycle_status = (
+        LIFECYCLE_CONFIRMED if normalized == "approved" else LIFECYCLE_DRAFT
+    )
     review = TestCaseReview(
         case_id=case.id,
         project_id=case.project_id,

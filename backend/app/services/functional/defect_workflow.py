@@ -329,3 +329,97 @@ def as_summary(defect: Defect) -> dict[str, Any]:
         "fix_build": defect.fix_build,
         "verification_result": defect.verification_result,
     }
+
+
+def create_regression_task(
+    db: Session,
+    *,
+    project_id: int,
+    defect_ids: list[int],
+    cycle_name: str,
+    plan_id: int | None,
+    target_build: str | None,
+    env_kind: str | None,
+    env_id: int | None,
+    user_id: int | None,
+) -> dict:
+    """Create one regression batch covering the selected defects' cases."""
+    defects = (
+        db.query(Defect)
+        .filter(Defect.project_id == project_id, Defect.id.in_(defect_ids))
+        .all()
+    )
+    if len(defects) != len(set(defect_ids)):
+        raise AppError("not_found", "部分缺陷不存在", status_code=404)
+
+    case_ids: list[int] = []
+    for defect in defects:
+        if defect.case_id and defect.case_id not in case_ids:
+            case_ids.append(defect.case_id)
+    if not case_ids:
+        raise AppError(
+            "bad_request", "所选缺陷没有关联用例，无法创建回归任务", status_code=400
+        )
+
+    if plan_id is not None:
+        plan = (
+            db.query(TestPlan)
+            .filter(TestPlan.id == plan_id, TestPlan.project_id == project_id)
+            .first()
+        )
+        if plan is None:
+            raise AppError("not_found", "测试计划不存在", status_code=404)
+    else:
+        plan = TestPlan(
+            project_id=project_id,
+            name=f"回归：{cycle_name}"[:512],
+            status="active",
+            creator_id=user_id,
+        )
+        db.add(plan)
+        db.flush()
+
+    cycle = TestCycle(
+        plan_id=plan.id,
+        name=cycle_name[:512],
+        status="draft",
+        target_build=target_build,
+        env_kind=env_kind,
+        env_id=env_id,
+        creator_id=user_id,
+        owner_id=user_id,
+    )
+    db.add(cycle)
+    db.flush()
+
+    created = 0
+    for case_id in case_ids:
+        case = db.get(TestCase, case_id)
+        if case is None or case.project_id != project_id:
+            continue
+        db.add(
+            TestCycleItem(
+                cycle_id=cycle.id,
+                case_id=case.id,
+                asset_type="functional",
+                asset_id=case.id,
+                asset_version=case.published_version_no,
+                result="untested",
+            )
+        )
+        created += 1
+
+    for defect in defects:
+        linked = [int(x) for x in (defect.regression_cycle_ids_json or []) if isinstance(x, int)]
+        if cycle.id not in linked:
+            linked.append(cycle.id)
+        defect.regression_cycle_ids_json = linked
+
+    db.commit()
+    db.refresh(cycle)
+    return {
+        "cycle_id": cycle.id,
+        "plan_id": plan.id,
+        "item_count": created,
+        "defect_ids": [d.id for d in defects],
+    }

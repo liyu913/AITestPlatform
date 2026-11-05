@@ -1,5 +1,6 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
@@ -14,13 +15,21 @@ import {
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { apiJson } from '../api/client'
+import { apiJson, ApiError } from '../api/client'
 import { formatBeijing } from '../utils/datetime'
 import PageBanner from './PageBanner'
 import { pct, type ReportSummary } from './Reports'
+
+function errText(ex: unknown): string {
+  if (ex instanceof ApiError && typeof ex.body === 'object' && ex.body !== null) {
+    const b = ex.body as { message?: string }
+    return b.message ?? `请求失败 (${ex.status})`
+  }
+  return '请求失败'
+}
 
 type MetricDelta = {
   key: string
@@ -103,7 +112,16 @@ type Snapshot = {
   risks: RiskRow[]
 }
 
-type Report = ReportSummary & { snapshot: Snapshot | null }
+type Report = ReportSummary & {
+  snapshot: Snapshot | null
+  narrative?: string
+  narrative_config?: {
+    source?: string
+    model_name?: string
+    skill_name?: string | null
+    skill_version?: number | null
+  } | null
+}
 
 const COVERAGE_LABEL: Record<string, string> = {
   case: '用例关联覆盖',
@@ -122,6 +140,8 @@ export default function ReportDetail() {
   const pid = Number(projectId)
   const rid = Number(reportId)
   const nav = useNavigate()
+  const { message } = App.useApp()
+  const qc = useQueryClient()
 
   const query = useQuery({
     queryKey: ['report', pid, rid],
@@ -137,6 +157,18 @@ export default function ReportDetail() {
   })
 
   const report = query.data
+  const narrativeMut = useMutation({
+    mutationFn: () =>
+      apiJson<Report>(`/api/v1/projects/${pid}/reports/${rid}/narrative`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      message.success('报告叙述已生成')
+      void qc.invalidateQueries({ queryKey: ['report', pid, rid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
   const snapshot = report?.snapshot
   const metrics = snapshot?.metrics
 
@@ -262,6 +294,43 @@ export default function ReportDetail() {
                 ) : null}
               </Space>
             </Space>
+          </Card>
+
+          <Card
+            size="small"
+            title="报告叙述"
+            extra={
+              <Button
+                size="small"
+                loading={narrativeMut.isPending}
+                onClick={() => narrativeMut.mutate()}
+              >
+                {report?.narrative ? '重新生成' : '生成叙述'}
+              </Button>
+            }
+          >
+            {report?.narrative ? (
+              <>
+                <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{report.narrative}</p>
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                  生成配置：{report.narrative_config?.source === 'action'
+                    ? '动作绑定'
+                    : report.narrative_config?.source === 'project'
+                      ? '项目默认'
+                      : '系统默认'}
+                  {report.narrative_config?.model_name
+                    ? ` · ${report.narrative_config.model_name}`
+                    : ''}
+                  {report.narrative_config?.skill_name
+                    ? ` · ${report.narrative_config.skill_name} v${report.narrative_config.skill_version}`
+                    : ''}
+                </p>
+              </>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                尚未生成。生成时会使用「回归报告叙述」动作绑定的 Skill/模型，并保存配置快照。
+              </p>
+            )}
           </Card>
 
           <Row gutter={[12, 12]}>

@@ -3,9 +3,9 @@ import {
   Alert,
   Button,
   Drawer,
+  Dropdown,
   Input,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
@@ -13,6 +13,8 @@ import {
   Upload,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { MenuProps } from 'antd'
+import { DeleteOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -49,7 +51,7 @@ function statusLabel(status: string): string {
 
 export default function ApiCaseList() {
   const { containerRef, scrollY } = useTableScrollY()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { projectId } = useParams()
   const pid = Number(projectId)
   const nav = useNavigate()
@@ -191,26 +193,48 @@ export default function ApiCaseList() {
     {
       title: '操作',
       width: 200,
-      render: (_, row) => (
-        <Space>
-          <Button
-            type="link"
-            loading={runningId === row.id}
-            disabled={envId == null || runBatch.isPending}
-            onClick={() => runOne.mutate(row.id)}
-          >
-            执行
-          </Button>
-          <Button type="link" onClick={() => setDebugId(row.id)}>
-            调试
-          </Button>
-          <Popconfirm title="删除？" onConfirm={() => remove.mutate(row.id)}>
-            <Button type="link" danger>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, row) => {
+        const moreItems: MenuProps['items'] = [
+          {
+            key: 'delete',
+            danger: true,
+            icon: <DeleteOutlined />,
+            label: '删除用例',
+            onClick: () =>
+              modal.confirm({
+                title: '删除该接口用例？',
+                content: '删除后不可恢复。',
+                okText: '删除',
+                okButtonProps: { danger: true },
+                cancelText: '取消',
+                onOk: () => remove.mutate(row.id),
+              }),
+          },
+        ]
+        return (
+          <div className="list-card-actions-row">
+            <Space size={4}>
+              <Button
+                type="primary"
+                size="small"
+                loading={runningId === row.id}
+                disabled={envId == null || runBatch.isPending}
+                onClick={() => runOne.mutate(row.id)}
+              >
+                执行
+              </Button>
+              <Button type="text" size="small" onClick={() => setDebugId(row.id)}>
+                调试
+              </Button>
+              <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+                <Button type="text" size="small" aria-label="更多操作">
+                  <EllipsisOutlined />
+                </Button>
+              </Dropdown>
+            </Space>
+          </div>
+        )
+      },
     },
   ]
 

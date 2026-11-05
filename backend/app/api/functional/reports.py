@@ -7,6 +7,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, require_project_role
+from app.models.ai.system_ai_settings import SystemLlmProfile
+from app.services.ai import ai_config, llm
+from app.services.ai.effective_ai_settings import runtime_for_profile
 from app.errors import AppError
 from app.models.functional.test_plan import TestCycle, TestCycleReport, TestPlan
 from app.models.identity.user import User
@@ -155,6 +158,10 @@ def _detail(row: TestCycleReport, cycle: TestCycle | None, plan: TestPlan | None
     return ReportOut(
         **base.model_dump(),
         snapshot=row.snapshot_json if isinstance(row.snapshot_json, dict) else None,
+        narrative=row.narrative or "",
+        narrative_config=(
+            row.narrative_config if isinstance(row.narrative_config, dict) else None
+        ),
     )
 
 
@@ -295,4 +302,56 @@ def export_report(
         headers={
             "Content-Disposition": f'attachment; filename="report-{row.cycle_id}-r{row.revision}.md"'
         },
+    )
+
+
+@router.post("/{report_id}/narrative", response_model=ReportOut)
+def generate_narrative(
+    project_id: int,
+    report_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+) -> ReportOut:
+    row = _require_report(db, project_id, report_id)
+    try:
+        config = ai_config.resolve(db, project_id=project_id, action="regression_report")
+    except AppError as exc:
+        raise AppError(
+            "bad_request", f"报告叙述未配置可用模型：{exc.message}", status_code=400
+        ) from exc
+    profile = db.get(SystemLlmProfile, config.model_profile_id)
+    runtime = runtime_for_profile(db, profile) if profile is not None else None
+    snapshot = row.snapshot_json if isinstance(row.snapshot_json, dict) else {}
+    risks = snapshot.get("risks") if isinstance(snapshot.get("risks"), list) else []
+    risk_text = "；".join(
+        str(item.get("text") if isinstance(item, dict) else item) for item in risks
+    ) or "无"
+    prompt = (
+        "请基于以下批次结果写一段中文测试报告叙述（200 字以内，事实为主，不要编造）：\n"
+        f"统计：{row.summary_text}\n"
+        f"风险：{risk_text}\n"
+        f"目标构建：{(snapshot.get('cycle') if isinstance(snapshot.get('cycle'), dict) else {}).get('target_build') or '未指定'}"
+    )
+    text = llm.chat_complete(
+        [
+            {
+                "role": "system",
+                "content": "你是测试报告撰写助手，只根据给定事实总结，不夸大结论。",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        model=config.model_name or "",
+        cfg=runtime,
+        scene="报告叙述",
+    )
+    row.narrative = (text or "").strip()
+    row.narrative_config = config.as_dict()
+    db.commit()
+    db.refresh(row)
+    return _detail(
+        row,
+        db.get(TestCycle, row.cycle_id),
+        db.get(TestPlan, db.get(TestCycle, row.cycle_id).plan_id)
+        if db.get(TestCycle, row.cycle_id) is not None
+        else None,
     )

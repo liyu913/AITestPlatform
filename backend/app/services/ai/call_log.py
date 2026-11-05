@@ -10,7 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models.ai.ai_call_log import AiCallLog
-from app.services.ai.call_context import project_id_var, request_id_var, user_id_var
+from app.services.ai.call_context import (
+    action_var,
+    binding_id_var,
+    config_source_var,
+    project_id_var,
+    request_id_var,
+    resolved_config_var,
+    skill_version_id_var,
+    user_id_var,
+)
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +129,11 @@ def record_ai_call(
                     user_id=user_id_var.get(),
                     project_id=project_id_var.get(),
                     request_id=clip_text(request_id_var.get(), 64),
+                    action=clip_text(action_var.get(), 32),
+                    skill_version_id=skill_version_id_var.get(),
+                    binding_id=binding_id_var.get(),
+                    config_source=clip_text(config_source_var.get(), 16),
+                    resolved_config=resolved_config_var.get(),
                 )
             )
             db.commit()

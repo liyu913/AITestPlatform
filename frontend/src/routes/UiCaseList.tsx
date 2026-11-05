@@ -2,11 +2,11 @@ import {
   Alert,
   App,
   Button,
+  Dropdown,
   Form,
   Input,
   Modal,
   Pagination,
-  Popconfirm,
   Select,
   Space,
   Spin,
@@ -15,6 +15,8 @@ import {
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { MenuProps } from 'antd'
+import { DeleteOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -114,7 +116,7 @@ export default function UiCaseList() {
   const { containerRef, scrollY } = useTableScrollY()
   const [viewMode, setViewMode] = useListViewMode('list-view:ui-cases')
 
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { projectId } = useParams()
   const pid = Number(projectId)
   const nav = useNavigate()
@@ -384,25 +386,44 @@ export default function UiCaseList() {
   }
 
   function caseActions(row: UiCase) {
+    const moreItems: MenuProps['items'] = [
+      {
+        key: 'delete',
+        danger: true,
+        icon: <DeleteOutlined />,
+        label: '删除用例',
+        onClick: () =>
+          modal.confirm({
+            title: '删除该用例？',
+            content: '删除后不可恢复。',
+            okText: '删除',
+            okButtonProps: { danger: true },
+            cancelText: '取消',
+            onOk: () => remove.mutate(row.id),
+          }),
+      },
+    ]
     return (
-      <Space wrap size="small">
-        <Button type="link" size="small" onClick={() => openEdit(row)}>
-          编辑
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          disabled={!envs.data?.items?.length}
-          onClick={() => openRun(row)}
-        >
-          执行
-        </Button>
-        <Popconfirm title="删除该用例？" onConfirm={() => remove.mutate(row.id)}>
-          <Button type="link" size="small" danger>
-            删除
+      <div className="list-card-actions-row">
+        <Space size={4}>
+          <Button
+            type="primary"
+            size="small"
+            disabled={!envs.data?.items?.length}
+            onClick={() => openRun(row)}
+          >
+            执行
           </Button>
-        </Popconfirm>
-      </Space>
+          <Button type="text" size="small" onClick={() => openEdit(row)}>
+            编辑
+          </Button>
+          <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+            <Button type="text" size="small" aria-label="更多操作">
+              <EllipsisOutlined />
+            </Button>
+          </Dropdown>
+        </Space>
+      </div>
     )
   }
 
