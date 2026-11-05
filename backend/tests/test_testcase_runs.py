@@ -37,7 +37,10 @@ def _project(token: str, name: str = "TCR") -> int:
 
 
 def test_judge_agent_once_result():
+    # No trace at all is a hard failure.
     assert judge_agent_once_result([])[0] == "failed"
+    # "The agent reached done" is no longer proof of success: without a case
+    # with declared expectations the run cannot be judged as passed.
     assert (
         judge_agent_once_result(
             [
@@ -45,8 +48,9 @@ def test_judge_agent_once_result():
                 {"action": "done", "status": "ok"},
             ]
         )[0]
-        == "passed"
+        == "blocked"
     )
+    # A failing step still fails the run even when the agent ends with done.
     assert (
         judge_agent_once_result(
             [
@@ -198,6 +202,8 @@ def test_agent_once_writes_case_run_and_syncs_status(monkeypatch):
             plan=plan,
             trace=[
                 {"action": "goto", "value": "/", "status": "ok", "screenshot_key": real_shot},
+                {"action": "assert_visible", "assert": "表单可见", "status": "ok"},
+                {"action": "assert_text", "assert": "进入首页", "status": "ok"},
                 {"action": "done", "status": "ok"},
             ],
             code="should_be_ignored",
@@ -238,12 +244,17 @@ def test_agent_once_writes_case_run_and_syncs_status(monkeypatch):
         assert body["case_id"] == case_id
         assert body["session_id"] == sess["id"]
         summary = body.get("summary_json") or {}
-        assert summary.get("step_count") == 2
-        assert len(summary.get("steps") or []) == 2
+        assert summary.get("step_count") == 4
+        assert len(summary.get("steps") or []) == 4
         assert summary["steps"][0]["action"] == "goto"
         assert "goto → ok" in (summary.get("log_lines") or [])
         assert "已截图" not in " ".join(summary.get("log_lines") or [])
         assert shot_key in (summary.get("screenshot_keys") or [])
+        # Judgement evidence is stored with the run and pinned to a case version.
+        judgement = summary.get("judgement") or {}
+        assert judgement.get("status") == "passed"
+        assert judgement.get("covered_count", 0) >= 2
+        assert summary.get("case_version_no") == 1
 
         # screenshot: unknown key rejected; listed key 404 if file missing
         bad = client.get(
@@ -259,7 +270,10 @@ def test_agent_once_writes_case_run_and_syncs_status(monkeypatch):
 
         case = client.get(f"/api/v1/projects/{pid}/test-cases/{case_id}", headers=h)
         assert case.status_code == 200
-        assert case.json()["status"] == "passed"
+        # Execution writes last_result; the legacy status stays the lifecycle.
+        assert case.json()["last_result"] == "passed"
+        assert case.json()["lifecycle_status"] == "confirmed"
+        assert case.json()["status"] == "confirmed"
 
         # confirm rejected for agent_once
         conf = client.post(

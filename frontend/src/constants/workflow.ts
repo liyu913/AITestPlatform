@@ -9,14 +9,27 @@ export const REQUIREMENT_STATUS_OPTIONS: LabeledValue[] = [
   { value: 'archived', label: '已归档' },
 ]
 
-export const TEST_CASE_STATUS_OPTIONS: LabeledValue[] = [
+/**
+ * 用例生命周期。执行结果不再写入这里，改由 `case.last_result` 展示。
+ */
+export const LIFECYCLE_STATUS_OPTIONS: LabeledValue[] = [
   { value: 'draft', label: '草稿' },
-  { value: 'ready', label: '就绪' },
-  { value: 'blocked', label: '阻塞' },
-  { value: 'passed', label: '通过' },
-  { value: 'failed', label: '失败' },
+  { value: 'pending_review', label: '待评审' },
+  { value: 'confirmed', label: '已确认' },
   { value: 'archived', label: '已归档' },
 ]
+
+/** 用例最近一次执行结果的展示项。 */
+export const CASE_RESULT_OPTIONS: LabeledValue[] = [
+  { value: 'untested', label: '未执行' },
+  { value: 'passed', label: '通过' },
+  { value: 'failed', label: '失败' },
+  { value: 'blocked', label: '阻塞' },
+  { value: 'error', label: '错误' },
+]
+
+/** @deprecated 使用 LIFECYCLE_STATUS_OPTIONS（保留兼容旧引用）。 */
+export const TEST_CASE_STATUS_OPTIONS: LabeledValue[] = LIFECYCLE_STATUS_OPTIONS
 
 export const PRIORITY_OPTIONS: LabeledValue[] = [
   { value: 'P0', label: 'P0（最高）' },
@@ -55,9 +68,25 @@ export const EXECUTION_RESULT_OPTIONS: LabeledValue[] = [
 export const DEFECT_STATUS_OPTIONS: LabeledValue[] = [
   { value: 'open', label: '待处理' },
   { value: 'in_progress', label: '处理中' },
-  { value: 'resolved', label: '已解决' },
+  { value: 'resolved', label: '已修复' },
+  { value: 'reopened', label: '重新打开' },
   { value: 'closed', label: '已关闭' },
 ]
+
+/** 缺陷失败分类（B5）。 */
+export const DEFECT_CATEGORY_OPTIONS: LabeledValue[] = [
+  { value: 'product', label: '产品缺陷' },
+  { value: 'environment', label: '环境' },
+  { value: 'data', label: '数据' },
+  { value: 'script', label: '执行脚本' },
+  { value: 'rule_pending', label: '规则待确认' },
+  { value: 'ux', label: '体验建议' },
+]
+
+export function labelForDefectCategory(value: string | null | undefined): string {
+  if (!value) return '产品缺陷'
+  return DEFECT_CATEGORY_OPTIONS.find((o) => o.value === value)?.label ?? value
+}
 
 export function priorityToForm(p: string | null | undefined): string | undefined {
   if (p === null || p === undefined || p === '') {
@@ -73,8 +102,25 @@ export function priorityFromForm(v: string | undefined): string | null {
   return v
 }
 
-export function labelForTestCaseStatus(value: string): string {
-  return TEST_CASE_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
+/** 旧数据的自由状态词映射到生命周期，保证历史记录照常显示。 */
+const LEGACY_LIFECYCLE_LABELS: Record<string, string> = {
+  ready: '已确认',
+  active: '已确认',
+  done: '已确认',
+  new: '草稿',
+  todo: '草稿',
+}
+
+export function labelForLifecycleStatus(value: string | null | undefined): string {
+  if (!value) return '草稿'
+  const hit = LIFECYCLE_STATUS_OPTIONS.find((o) => o.value === value)
+  if (hit) return hit.label
+  return LEGACY_LIFECYCLE_LABELS[value] ?? value
+}
+
+export function labelForCaseResult(value: string | null | undefined): string {
+  const key = value || 'untested'
+  return CASE_RESULT_OPTIONS.find((o) => o.value === key)?.label ?? key
 }
 
 export function labelForRequirementStatus(value: string): string {

@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 *.pyc
+pytest-of-*/
+.pytest_cache/
+acceptance/

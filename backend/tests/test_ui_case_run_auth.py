@@ -7,7 +7,7 @@ from app.config import settings
 from app.main import app
 from app.models.identity.user import User
 from app.services.identity import auth_service
-from tests.conftest import TestingSessionLocal
+from tests.conftest import TestingSessionLocal, requires_integration
 
 
 def _user(username: str, pw: str):
@@ -35,6 +35,7 @@ def _project(token: str, name: str = "UICASEAUTH") -> int:
     return r.json()["id"]
 
 
+@requires_integration
 def test_case_auth_mode_and_run_options(monkeypatch):
     monkeypatch.setattr(settings, "settings_encryption_key", Fernet.generate_key().decode())
     _user("ui_case_auth", "p")

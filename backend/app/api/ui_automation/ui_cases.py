@@ -15,6 +15,7 @@ from app.schemas.ui_automation.ui_automation import (
     UiCaseUpdate,
     UiRunOut,
 )
+from app.services.functional.cycle_attempt_sync import sync_attempt_quietly, validate_cycle_item
 from app.services.functional.test_data_vars import as_str_dict
 from app.services.ui_automation.ui_ai_explorer import steps_to_script
 from app.services.ui_automation.ui_env_auth import normalize_auth_mode
@@ -293,6 +294,7 @@ def run_case(
         # Do not inherit case account into follow-env / token / none (steals token inject)
         account_name = None
     run_opts = _run_options_payload(auth_mode=auth_mode, variables=body.variables)
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     run = UiRun(
         project_id=project_id,
         trigger_type="case",
@@ -303,6 +305,7 @@ def run_case(
         account_name=account_name,
         queue_name=queue,
         status="pending",
+        cycle_item_id=cycle_item.id if cycle_item is not None else None,
         triggered_by=user.id,
         summary_json={"run_options": run_opts} if run_opts else None,
     )
@@ -311,6 +314,8 @@ def run_case(
     db.refresh(run)
     if body.sync:
         execute_ui_run(db, run.id)
+        if run.cycle_item_id is not None:
+            sync_attempt_quietly(db, run_type="ui", run_id=run.id)
         db.refresh(run)
     else:
         task_id = enqueue_run_ui_case(run.id, queue=queue)

@@ -17,7 +17,7 @@ import type { ColumnsType } from 'antd/es/table'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   labelForRequirementStatus,
   PRIORITY_OPTIONS,
@@ -202,6 +202,28 @@ export default function RequirementList() {
       apiJson<PageRes<Requirement>>(listUrl(pid, page, pageSize, searchDebounced)),
     enabled: Number.isFinite(pid),
   })
+
+  // Deep link from global search: /requirements?requirement=ID opens the editor.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openedRequirementRef = useRef<number | null>(null)
+  const requirementParam = searchParams.get('requirement')
+  useEffect(() => {
+    if (!requirementParam) return
+    const requirementId = Number(requirementParam)
+    if (!Number.isFinite(requirementId) || openedRequirementRef.current === requirementId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('requirement')
+    setSearchParams(next, { replace: true })
+    openedRequirementRef.current = requirementId
+    const cached = (listQuery.data?.items ?? []).find((row) => row.id === requirementId)
+    if (cached) {
+      openEdit(cached)
+      return
+    }
+    void apiJson<Requirement>(`/api/v1/projects/${pid}/requirements/${requirementId}`)
+      .then(openEdit)
+      .catch(() => undefined)
+  }, [requirementParam, listQuery.data, pid, searchParams, setSearchParams])
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Requirement | null>(null)

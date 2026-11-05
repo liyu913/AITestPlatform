@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import Layout from './routes/Layout'
 import Login from './routes/Login'
@@ -50,6 +50,44 @@ import TestCaseRunDetail from './routes/TestCaseRunDetail'
 import DefectList from './routes/DefectList'
 import Coverage from './routes/Coverage'
 import Dashboard from './routes/Dashboard'
+import Workbench from './routes/Workbench'
+import ExecutionCenter from './routes/ExecutionCenter'
+import Reports from './routes/Reports'
+import ReportDetail from './routes/ReportDetail'
+import { LEGACY_PROJECT_SEGMENTS } from './routes/domainNav'
+
+const LAST_PROJECT_ID_KEY = 'raina.lastProjectId'
+
+function readLastProjectId(): string | null {
+  try {
+    const raw = localStorage.getItem(LAST_PROJECT_ID_KEY)
+    if (!raw) return null
+    const id = Number(raw)
+    return Number.isFinite(id) && id > 0 ? String(id) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 旧链接（/requirements、/api-runs/12 …）进入当前项目的对应页面。
+ * 没有上次访问的项目时回到项目列表，而不是报 404。
+ */
+function LegacyRedirect() {
+  const { pathname, search } = useLocation()
+  const last = readLastProjectId()
+  const rest = pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+  const firstSegment = rest.split('/')[0] ?? ''
+  const mapped = LEGACY_PROJECT_SEGMENTS[firstSegment]
+  if (!mapped) {
+    return <Navigate to="/projects" replace />
+  }
+  const mappedRest = mapped + rest.slice(firstSegment.length)
+  if (!last) {
+    return <Navigate to="/projects" replace />
+  }
+  return <Navigate to={`/projects/${last}/${mappedRest}${search}`} replace />
+}
 
 function RedirectToKnowledge() {
   const { projectId } = useParams()
@@ -112,7 +150,8 @@ export default function App() {
           }
         />
         <Route path="/projects/:projectId" element={<ProjectShell />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route index element={<Navigate to="workbench" replace />} />
+          <Route path="workbench" element={<Workbench />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="requirements" element={<RequirementList />} />
           <Route path="test-cases" element={<TestCaseList />} />
@@ -122,6 +161,9 @@ export default function App() {
           <Route path="test-plans" element={<TestPlanList />} />
           <Route path="test-plans/:planId" element={<TestPlanDetail />} />
           <Route path="cycles/:cycleId" element={<TestCycleDetail />} />
+          <Route path="executions" element={<ExecutionCenter />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="reports/:reportId" element={<ReportDetail />} />
           <Route path="defects" element={<DefectList />} />
           <Route path="coverage" element={<Coverage />} />
           <Route path="envs" element={<EnvHub />} />
@@ -161,6 +203,8 @@ export default function App() {
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/projects" replace />} />
+      {/* 旧链接兼容：命中已知分段时进入上次访问的项目，其余回到项目列表 */}
+      <Route path="/:legacySegment/*" element={<LegacyRedirect />} />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
   )

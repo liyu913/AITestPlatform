@@ -172,12 +172,14 @@ class ApiCaseOut(BaseModel):
 class ApiCaseRunRequest(BaseModel):
     env_id: int | None = None
     sync: bool = False
+    cycle_item_id: int | None = None
 
 
 class ApiCaseBatchRunRequest(BaseModel):
     case_ids: list[int] = Field(default_factory=list)
     env_id: int | None = None
     sync: bool = False
+    cycle_item_id: int | None = None
 
 
 class ApiSuiteExtractorIn(BaseModel):
@@ -265,6 +267,7 @@ class ApiSuiteOut(BaseModel):
 class ApiSuiteRunRequest(BaseModel):
     env_id: int | None = None
     sync: bool = True
+    cycle_item_id: int | None = None
 
 
 class ScenarioEditorChatTurn(BaseModel):

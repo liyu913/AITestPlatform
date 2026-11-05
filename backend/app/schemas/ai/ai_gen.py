@@ -1,9 +1,11 @@
 import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.functional.testcase import clean_case_type, clean_precondition
+from app.schemas.functional.design_trace import CaseDesignTrace
 from app.services.ai.case_review_dims import (
     DEFAULT_WEIGHT,
     MAX_WEIGHT,
@@ -12,8 +14,16 @@ from app.services.ai.case_review_dims import (
 )
 
 
-class ChatMessage(BaseModel):
+class PromptMessage(BaseModel):
+    """Internal prompt, including server-side requirement document content."""
+
     role: Literal["user", "assistant"]
+    content: str = Field(min_length=1)
+
+
+class ChatMessage(PromptMessage):
+    """User-supplied chat message; document enrichment must not use this limit."""
+
     content: str = Field(min_length=1, max_length=16000)
 
 
@@ -37,6 +47,8 @@ class GeneratedCaseStep(BaseModel):
 
 
 class GeneratedCase(BaseModel):
+    draft_id: str | None = None
+    design_trace: CaseDesignTrace | None = None
     title: str = Field(min_length=1, max_length=512)
     overall_expected: str | None = Field(default=None, max_length=65535)
     module: str | None = Field(default=None, max_length=128)
@@ -45,6 +57,11 @@ class GeneratedCase(BaseModel):
     case_type: str | None = Field(default=None, max_length=32)
     priority: str | None = Field(default=None, max_length=64)
     steps: list[GeneratedCaseStep] = Field(default_factory=list)
+
+    @field_validator("draft_id")
+    @classmethod
+    def _valid_draft_id(cls, value: str | None) -> str | None:
+        return str(UUID(value)) if value is not None else None
 
     @field_validator("precondition", mode="before")
     @classmethod
@@ -83,6 +100,7 @@ class AiGenerateRequest(BaseModel):
 
 
 class LlmOptionsOut(BaseModel):
+    case_design_skill: str | None = None
     default_model: str
     models: list[str]
 

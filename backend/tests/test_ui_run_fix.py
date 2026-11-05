@@ -10,7 +10,7 @@ from app.main import app
 from app.models.identity.user import User
 from app.models.ui_automation.ui_automation import UiRun, UiRunStep, UiScenarioAgentSession
 from app.services.identity import auth_service
-from tests.conftest import TestingSessionLocal
+from tests.conftest import TestingSessionLocal, requires_integration
 
 _SCRIPT = """async function run(page, agent) {
   await page.goto('/login');
@@ -379,6 +379,7 @@ def test_ui_run_fix_rejects_passed_run(monkeypatch):
     assert r.status_code == 400
 
 
+@requires_integration
 def test_execute_node_script_maps_expect_failure_and_screenshot():
     from app.services.ui_automation.node_ui_runner import execute_node_ui_script
 
@@ -413,6 +414,7 @@ def test_execute_node_script_maps_expect_failure_and_screenshot():
     assert isinstance(rows[0].get("duration_ms"), int)
 
 
+@requires_integration
 def test_execute_node_script_saves_ok_screenshot_and_forwards_on_log():
     from app.services.ui_automation.node_ui_runner import execute_node_ui_script
 
@@ -462,6 +464,7 @@ def test_execute_node_script_saves_ok_screenshot_and_forwards_on_log():
     ]
 
 
+@requires_integration
 def test_execute_node_script_maps_step_events_to_rows():
     from app.services.ui_automation.node_ui_runner import execute_node_ui_script
 

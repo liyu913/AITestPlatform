@@ -5,6 +5,8 @@
 .vscode
 **/.DS_Store
 **/*.md
+!backend/app/services/ai/skill_resources/test-case-generator/SKILL.md
+!backend/app/services/ai/skill_resources/test-case-generator/references/*.md
 **/__pycache__
 **/*.py[cod]
 **/.venv

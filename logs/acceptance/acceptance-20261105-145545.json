@@ -1,0 +1,147 @@
+{
+  "status": "passed",
+  "started_at": "2026-11-05T14:55:23",
+  "finished_at": "2026-11-05T14:55:45",
+  "config": {
+    "project_name": "第一版验收-API实测2",
+    "base_url": "http://127.0.0.1:8000",
+    "build": "acceptance-build-1",
+    "scope": {
+      "manual": 6,
+      "api": 5,
+      "ui": 0,
+      "total": 11,
+      "requirements": 2
+    },
+    "automated_runs": {
+      "api": true,
+      "ui": false
+    },
+    "known_defects": 2,
+    "strict": true,
+    "password": "***"
+  },
+  "project_id": 6,
+  "cycle_id": 3,
+  "report_id": 3,
+  "counts": {
+    "items": 11,
+    "manual_recorded": 6,
+    "api_runs": 5,
+    "ui_runs": 0,
+    "defects": 2
+  },
+  "evaluation": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "scope_total",
+        "passed": true,
+        "detail": {
+          "expected": 11,
+          "actual": 11
+        }
+      },
+      {
+        "name": "manual_recorded",
+        "passed": true,
+        "detail": {
+          "recorded": 6
+        }
+      },
+      {
+        "name": "automated_executed",
+        "passed": true,
+        "detail": {
+          "expected": 5,
+          "executed": 5,
+          "note": ""
+        }
+      },
+      {
+        "name": "known_defects_closed",
+        "passed": true,
+        "detail": {
+          "defects": [
+            {
+              "defect_id": 9,
+              "item_id": 72,
+              "category": "product",
+              "status": "closed"
+            },
+            {
+              "defect_id": 10,
+              "item_id": 73,
+              "category": "product",
+              "status": "closed"
+            }
+          ]
+        }
+      },
+      {
+        "name": "requirement_coverage",
+        "passed": true,
+        "detail": {
+          "ratio": 1.0,
+          "requirements": 2
+        }
+      },
+      {
+        "name": "report_snapshot",
+        "passed": true,
+        "detail": {
+          "risks": 2
+        }
+      },
+      {
+        "name": "all_items_executed",
+        "passed": true,
+        "detail": {
+          "metrics": {
+            "flaky": 0,
+            "failed": 2,
+            "passed": 9,
+            "blocked": 0,
+            "running": 0,
+            "skipped": 0,
+            "untested": 0,
+            "pass_rate": 0.8182,
+            "selected_total": 11,
+            "completion_rate": 1.0,
+            "retried_to_pass": 0
+          }
+        }
+      }
+    ],
+    "metrics": {
+      "flaky": 0,
+      "failed": 2,
+      "passed": 9,
+      "blocked": 0,
+      "running": 0,
+      "skipped": 0,
+      "untested": 0,
+      "pass_rate": 0.8182,
+      "selected_total": 11,
+      "completion_rate": 1.0,
+      "retried_to_pass": 0
+    },
+    "coverage_ratio": 1.0,
+    "defects": [
+      {
+        "defect_id": 9,
+        "item_id": 72,
+        "category": "product",
+        "status": "closed"
+      },
+      {
+        "defect_id": 10,
+        "item_id": 73,
+        "category": "product",
+        "status": "closed"
+      }
+    ],
+    "report_id": 3
+  },
+  "summary": "通过率 82% · 完成比例 100% · 通过 9 / 失败 2 / 阻塞 0 / 未执行 0"
+}

@@ -4,7 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")
 
-    app_name: str = "RainaAI测试平台"
+    app_name: str = "LY测试平台"
+    # Comma-separated project IDs (or "*") enabled for skill-backed fast generation.
+    # Default "*": every AI draft must carry step expectations + design basis (B3).
+    # Set to a project list (or empty) to fall back to the legacy unstructured mode.
+    fast_case_skill_projects: str = "*"
     mysql_dsn: str = "mysql+pymysql://raina:raina@127.0.0.1:3306/raina"
     jwt_secret: str = "change-me-in-env"
     jwt_algorithm: str = "HS256"

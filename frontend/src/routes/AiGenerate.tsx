@@ -38,6 +38,7 @@ import AgentSessionHistory, {
 } from '../components/AgentSessionHistory'
 import ListViewToggle, { useListViewMode } from '../components/ListViewToggle'
 import { VariablesTags } from '../components/TestDataVariables'
+import CaseDesignEvidence, { type DesignTrace } from '../components/CaseDesignEvidence'
 import {
   CASE_REVIEW_DIMENSIONS,
   CASE_REVIEW_DIM_TITLE,
@@ -61,6 +62,8 @@ type CaseReviewReport = {
 }
 
 type GeneratedCase = {
+  draft_id?: string | null
+  design_trace?: DesignTrace | null
   title: string
   overall_expected?: string | null
   module?: string | null
@@ -71,7 +74,7 @@ type GeneratedCase = {
   steps: { order: number; action: string; expected?: string }[]
 }
 
-type LlmOptions = { default_model: string; models: string[] }
+type LlmOptions = { default_model: string; models: string[]; case_design_skill?: string | null }
 
 type PageRes<T> = {
   items: T[]
@@ -188,6 +191,7 @@ function sortedSteps(steps: GeneratedCase['steps']) {
     .map((s, i) => ({
       order: i,
       action: s.action.trim(),
+      expected: s.expected?.trim() || '',
     }))
 }
 
@@ -195,7 +199,7 @@ function normalizeStepsForApi(steps: GeneratedCase['steps']) {
   return sortedSteps(steps).map((s, i) => ({
     order: i,
     action: s.action,
-    expected: STEPS_EXPECTED_PLACEHOLDER,
+    expected: s.expected || STEPS_EXPECTED_PLACEHOLDER,
   }))
 }
 
@@ -213,11 +217,8 @@ function renderPriorityTag(priority: string | null | undefined) {
   return <Tag color={PRIORITY_TAG_COLORS[value] ?? 'default'}>{value}</Tag>
 }
 
-function caseIndexFromKey(key: string): number | null {
-  const match = /^case-(\d+)$/.exec(key)
-  if (!match) return null
-  const index = Number(match[1])
-  return Number.isFinite(index) ? index : null
+function draftKey(row: GeneratedCase, index: number): string {
+  return row.draft_id || `case-${index}`
 }
 
 function roleLabel(role: ChatBubble['role']): string {
@@ -268,6 +269,8 @@ export default function AiGenerate() {
   const [writingMode, setWritingMode] = useState<null | 'all' | 'batch' | number>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
   const [stepsModalCase, setStepsModalCase] = useState<GeneratedCase | null>(null)
+  const [editingDraftKey, setEditingDraftKey] = useState<string | null>(null)
+  const [savingSteps, setSavingSteps] = useState(false)
   const [busy, setBusy] = useState(false)
   const [reqPopoverOpen, setReqPopoverOpen] = useState(false)
   const [libPopoverOpen, setLibPopoverOpen] = useState(false)
@@ -384,7 +387,7 @@ export default function AiGenerate() {
     drafts?: GeneratedCase[]
   }) {
     const sid = sessionIdRef.current
-    if (!sid || !Number.isFinite(pid)) return
+    if (!sid || !Number.isFinite(pid)) return false
     const messages = opts?.messages ?? chatMessages
     const drafts = opts?.drafts ?? generatedCases
     try {
@@ -413,8 +416,10 @@ export default function AiGenerate() {
           ...next,
         ]
       })
-    } catch {
-      // persistence best-effort; chat already succeeded
+      return true
+    } catch (error) {
+      message.error(`会话保存失败，刷新前请重试。${errText(error)}`)
+      return false
     }
   }
 
@@ -717,6 +722,8 @@ export default function AiGenerate() {
       cases: valid.map((index) => {
         const row = generatedCases[index]
         return {
+          draft_id: row.draft_id ?? null,
+          design_trace: row.design_trace ?? null,
           title: row.title,
           module: row.module?.trim() || null,
           precondition: row.precondition?.trim() || null,
@@ -764,10 +771,30 @@ export default function AiGenerate() {
   }
 
   function writeSelectedCases() {
-    const indices = selectedRowKeys
-      .map(caseIndexFromKey)
-      .filter((i): i is number => i !== null)
+    const indices = generatedCases.flatMap((row, i) => selectedRowKeys.includes(draftKey(row, i)) ? [i] : [])
     void writeCases(indices, 'batch')
+  }
+
+  function openDraft(row: GeneratedCase) {
+    setEditingDraftKey(draftKey(row, generatedCases.indexOf(row)))
+    setStepsModalCase({ ...row, steps: sortedSteps(row.steps) })
+  }
+
+  async function saveDraftSteps() {
+    if (!stepsModalCase || savingSteps) return
+    if (stepsModalCase.design_trace && stepsModalCase.steps.some(s => !s.expected?.trim() || s.expected.trim() === '—')) {
+      message.warning('请填写每一步的可观察预期')
+      return
+    }
+    const updated = generatedCases.map((row, i) => draftKey(row, i) === editingDraftKey ? stepsModalCase : row)
+    setSavingSteps(true)
+    try {
+      if (await persistSession({ drafts: updated })) {
+        setGeneratedCases(updated)
+        setStepsModalCase(null)
+        message.success('已保存草稿步骤')
+      }
+    } finally { setSavingSteps(false) }
   }
 
   if (!Number.isFinite(pid)) {
@@ -830,7 +857,7 @@ export default function AiGenerate() {
             type="link"
             size="small"
             style={{ padding: 0, height: 'auto' }}
-            onClick={() => setStepsModalCase(r)}
+            onClick={() => openDraft(r)}
           >
             查看步骤
           </Button>
@@ -881,7 +908,7 @@ export default function AiGenerate() {
     },
   ]
 
-  const stepsModalColumns: ColumnsType<{ order: number; action: string }> = [
+  const stepsModalColumns: ColumnsType<GeneratedCase['steps'][number]> = [
     {
       title: '序号',
       key: 'idx',
@@ -891,7 +918,17 @@ export default function AiGenerate() {
     {
       title: '操作',
       dataIndex: 'action',
-      ellipsis: true,
+    },
+    {
+      title: '逐步预期',
+      key: 'expected',
+      render: (_, step, index) => (
+        <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} aria-label={`步骤 ${index + 1} 的预期结果`}
+          value={step.expected ?? ''} onChange={e => {
+            const expected = e.target.value
+            setStepsModalCase(row => row && ({ ...row, steps: row.steps.map((s, i) => i === index ? { ...s, expected } : s) }))
+          }} />
+      ),
     },
   ]
 
@@ -1131,7 +1168,7 @@ export default function AiGenerate() {
             </Space>
           </div>
           <p className="field-hint" style={{ marginTop: 0 }}>
-            对话生成后可在此预览；继续对话会更新整表；确认写入后才会进项目。
+            {llmOpts.data?.case_design_skill ? '用例设计规则已启用。打开草稿可核对设计依据、修改逐步预期，确认后写入用例库。' : '在此预览生成的草稿，确认后写入用例库。'}
           </p>
           <Tabs
             className="ai-generate-result-tabs"
@@ -1148,7 +1185,7 @@ export default function AiGenerate() {
                     {draftViewMode === 'table' ? (
                       <div className="api-scenario-agent-plan-table" ref={draftTableRef}>
                         <Table<GeneratedCase>
-                          rowKey={(record) => `case-${generatedCases.indexOf(record)}`}
+                          rowKey={(record) => draftKey(record, generatedCases.indexOf(record))}
                           size="small"
                           scroll={{ x: 1060, y: draftScrollY }}
                           pagination={{
@@ -1174,7 +1211,7 @@ export default function AiGenerate() {
                         ) : (
                           <div className="ai-generate-draft-grid">
                             {gridPageItems.map(({ row, index }) => {
-                              const key = `case-${index}`
+                              const key = draftKey(row, index)
                               const steps = sortedSteps(row.steps)
                               return (
                                 <article key={key} className="ai-generate-draft-card">
@@ -1197,7 +1234,7 @@ export default function AiGenerate() {
                                             size="small"
                                             icon={<UnorderedListOutlined />}
                                             disabled={steps.length === 0}
-                                            onClick={() => setStepsModalCase(row)}
+                                            onClick={() => openDraft(row)}
                                           />
                                         </span>
                                       </Tooltip>
@@ -1319,11 +1356,13 @@ export default function AiGenerate() {
             title={stepsModalCase?.title ?? '用例步骤'}
             open={stepsModalCase !== null}
             footer={
-              <Button type="primary" onClick={() => setStepsModalCase(null)}>
-                关闭
-              </Button>
+              <Space>
+                <Button onClick={() => setStepsModalCase(null)}>关闭</Button>
+                <Button type="primary" loading={savingSteps} disabled={busy || writingMode !== null}
+                  onClick={() => void saveDraftSteps()}>保存草稿</Button>
+              </Space>
             }
-            width={480}
+            width={760}
             destroyOnHidden
             onCancel={() => setStepsModalCase(null)}
           >
@@ -1348,9 +1387,10 @@ export default function AiGenerate() {
               size="small"
               pagination={false}
               columns={stepsModalColumns}
-              dataSource={stepsModalCase ? sortedSteps(stepsModalCase.steps) : []}
+              dataSource={stepsModalCase?.steps ?? []}
               locale={{ emptyText: '暂无步骤' }}
             />
+            <CaseDesignEvidence trace={stepsModalCase?.design_trace} />
           </Modal>
         </aside>
 

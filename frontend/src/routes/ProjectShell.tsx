@@ -26,7 +26,13 @@ export default function ProjectShell() {
           })}
         </nav>
       )}
-      <Outlet />
+      {/*
+        Keyed by project: switching projects remounts the page so filters,
+        selections and pagination never leak from the previous project.
+      */}
+      <div key={projectId ?? 'no-project'}>
+        <Outlet />
+      </div>
     </div>
   )
 }

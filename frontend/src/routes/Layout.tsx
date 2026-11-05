@@ -2,15 +2,20 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   BookOutlined,
+  BugOutlined,
   CheckOutlined,
   CloudServerOutlined,
+  CompassOutlined,
   DashboardOutlined,
   DesktopOutlined,
   ExperimentOutlined,
   FileTextOutlined,
   HistoryOutlined,
   MobileOutlined,
+  PieChartOutlined,
+  PlayCircleOutlined,
   ProjectOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   SwapOutlined,
   TeamOutlined,
@@ -25,9 +30,11 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom'
 import { REMEMBER_LOGIN_KEY, SAVED_PASSWORD_KEY, useAuth } from '../auth/AuthContext'
 import { ApiError, apiJson } from '../api/client'
+import ProjectSearch from '../components/ProjectSearch'
 import { activeDomain, activeTab, DOMAIN_SECTIONS, DOMAINS, projectPath } from './domainNav'
 
 const DOMAIN_ICONS: Record<string, ReactNode> = {
+  workbench: <CompassOutlined />,
   dashboard: <DashboardOutlined />,
   requirements: <FileTextOutlined />,
   functional: <ExperimentOutlined />,
@@ -37,6 +44,11 @@ const DOMAIN_ICONS: Record<string, ReactNode> = {
   ui: <DesktopOutlined />,
   app: <MobileOutlined />,
   perf: <ThunderboltOutlined />,
+  testplans: <ScheduleOutlined />,
+  execution: <PlayCircleOutlined />,
+  reports: <FileTextOutlined />,
+  defects: <BugOutlined />,
+  coverage: <PieChartOutlined />,
   modules: <AppstoreOutlined />,
   members: <TeamOutlined />,
 }
@@ -211,7 +223,7 @@ export default function Layout() {
       <header className="topbar">
         <div className="topbar-brand-group">
           <Link to="/projects" className="brand">
-            RainaAI测试平台
+            LY测试平台
           </Link>
           <Dropdown menu={projectMenu} trigger={['click']} placement="bottomLeft">
             <button
@@ -226,6 +238,7 @@ export default function Layout() {
         </div>
         <div className="spacer" />
         <div className="topbar-actions">
+          {projectId ? <ProjectSearch projectId={projectId} /> : null}
           {meLabel && <span className="topbar-user muted">{meLabel}</span>}
           <button type="button" className="btn ghost" onClick={openPasswordModal}>
             修改密码

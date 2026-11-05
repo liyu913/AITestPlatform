@@ -140,11 +140,14 @@ def test_plan_cycle_execute_defect_coverage(mock_rq, tmp_path, monkeypatch):
     assert p2.status_code == 200
     assert p2.json()["result"] == "failed"
 
-    # case status synced
+    # execution result is projected onto the case; lifecycle is untouched
     g1 = client.get(f"/api/v1/projects/{pid}/test-cases/{case1}", headers=h)
-    assert g1.json()["status"] == "passed"
+    assert g1.json()["last_result"] == "passed"
+    assert g1.json()["lifecycle_status"] == "draft"
+    assert g1.json()["status"] == "draft"
     g2 = client.get(f"/api/v1/projects/{pid}/test-cases/{case2}", headers=h)
-    assert g2.json()["status"] == "failed"
+    assert g2.json()["last_result"] == "failed"
+    assert g2.json()["lifecycle_status"] == "draft"
 
     # attachment
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32

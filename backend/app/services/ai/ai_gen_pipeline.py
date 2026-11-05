@@ -1,7 +1,7 @@
 import base64
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, TypeAdapter
@@ -14,8 +14,9 @@ from app.schemas.ai.ai_agent import (
     RequirementAnalysisOut,
     TestPointsResponse,
 )
-from app.schemas.ai.ai_gen import ChatMessage, GeneratedCase, ReviewDimensionConfig
+from app.schemas.ai.ai_gen import PromptMessage, GeneratedCase, ReviewDimensionConfig
 from app.services.ai import llm
+from app.services.ai.fast_case_skill import FastCaseSkill
 from app.services.ai.case_review_dims import (
     build_review_checklist_text,
     issue_type_keys_csv,
@@ -40,7 +41,7 @@ def _phase_label(phase: str) -> str:
     return _PHASE_LABELS.get(phase, phase)
 
 
-def _format_chat_history(chat_messages: list[ChatMessage]) -> str:
+def _format_chat_history(chat_messages: list[PromptMessage]) -> str:
     if not chat_messages:
         return "(无对话)"
     lines: list[str] = []
@@ -67,7 +68,14 @@ def _json_complete_with_retry(
     llm_cfg: LlmRuntime,
     retry_user_hint: str,
     phase: str = "unknown",
+    validate: Callable[[T], None] | None = None,
 ) -> T:
+    def parse(text: str) -> T:
+        result = _parse_json_model(text, adapter)
+        if validate:
+            validate(result)
+        return result
+
     log.info(
         "分步生成调用大模型 阶段=%s 模型=%s 消息数=%d",
         _phase_label(phase),
@@ -77,7 +85,7 @@ def _json_complete_with_retry(
     scene = f"用例生成-{_phase_label(phase)}"
     raw = llm.chat_complete(messages, model=use_llm_model, db=None, cfg=llm_cfg, scene=scene)
     try:
-        return _parse_json_model(raw, adapter)
+        return parse(raw)
     except Exception as e1:
         log.warning("分步生成 JSON 解析失败 阶段=%s 正在重试: %s", _phase_label(phase), e1)
         retry_messages = list(messages)
@@ -98,7 +106,7 @@ def _json_complete_with_retry(
             retry_messages, model=use_llm_model, db=None, cfg=llm_cfg, scene=scene
         )
         try:
-            return _parse_json_model(raw2, adapter)
+            return parse(raw2)
         except Exception as e2:
             raise AppError(
                 "unprocessable_entity",
@@ -126,27 +134,44 @@ def _cases_from_llm_raw(
     *,
     use_llm_model: str,
     llm_cfg: LlmRuntime,
+    skill: FastCaseSkill | None = None,
+    previous: list[GeneratedCase] | None = None,
 ) -> list[GeneratedCase]:
+    def parse(text: str) -> list[GeneratedCase]:
+        cases = _parse_cases_from_llm(text)
+        return (
+            skill.complete_cases(cases, previous, llm_model=use_llm_model)
+            if skill
+            else cases
+        )
+
     try:
-        return _parse_cases_from_llm(raw)
+        return parse(raw)
     except Exception as e1:
         retry_messages = list(messages)
         retry_messages.append({"role": "assistant", "content": raw})
         retry_messages.append(
             {
                 "role": "user",
-                "content": f"上次输出无法解析为合法 JSON（错误: {e1}）。请仅输出合法 JSON 对象，键为 cases。",
+                "content": (
+                    f"上次输出无法入库（错误: {e1}）。请仅输出合法 JSON 对象，键为 cases，"
+                    "并确保每条用例包含每步 expected 与符合条件的 design_trace。"
+                    if skill
+                    else f"上次输出无法解析为合法 JSON（错误: {e1}）。请仅输出合法 JSON 对象，键为 cases。"
+                ),
             }
         )
         raw2 = llm.chat_complete(
             retry_messages, model=use_llm_model, db=None, cfg=llm_cfg, scene="用例生成"
         )
         try:
-            return _parse_cases_from_llm(raw2)
+            return parse(raw2)
         except Exception as e2:
             raise AppError(
                 "unprocessable_entity",
-                "LLM 返回内容无法解析为测试用例 JSON",
+                f"模型修订后仍未满足用例字段要求：{str(e2)[:240]}"
+                if skill
+                else "LLM 返回内容无法解析为测试用例 JSON",
                 detail=str(e2),
                 status_code=422,
             ) from e2
@@ -234,6 +259,7 @@ def iter_case_review(
     llm_cfg: LlmRuntime,
     test_points_json: str | None = None,
     context: str | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield phase/status/review events; final event is type=review_done with cases+result."""
     if not dims:
@@ -255,8 +281,17 @@ def iter_case_review(
         context_parts.append(f"测试点：\n{test_points_json}")
     context_parts.append(f"待检查用例：\n{cases_json}")
     context_parts.append("请按维度评审并输出修订后的 cases。")
+    review_prompt = _review_prompt(dims)
+    if skill:
+        review_prompt += "\n保留已有用例的 draft_id、design_trace 和步骤 expected。修订后引用原始材料的连续原文，修改的断言须有相应依据。新用例省略 draft_id。"
+        context_parts.extend(f"{ref} {source.label}\n{source.text}" for ref, source in skill.sources.items())
+
+    def validate_design(review: CaseReviewOut) -> None:
+        if skill and review.cases:
+            skill.complete_cases(review.cases, draft_cases)
+
     review_messages = [
-        {"role": "system", "content": _review_prompt(dims)},
+        {"role": "system", "content": review_prompt},
         {"role": "user", "content": "\n\n".join(context_parts)},
     ]
     review_out = _json_complete_with_retry(
@@ -266,6 +301,7 @@ def iter_case_review(
         llm_cfg=llm_cfg,
         retry_user_hint="请输出含 summary、issues、dimension_scores、cases 的合法 JSON 对象",
         phase="review",
+        validate=validate_design if skill else None,
     )
     final_cases = review_out.cases if review_out.cases else draft_cases
     review_result = CaseReviewResult(
@@ -298,13 +334,18 @@ def _iter_cases_and_review(
     llm_cfg: LlmRuntime,
     enable_case_review: bool = False,
     review_dimensions: list[ReviewDimensionConfig] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[dict[str, Any]]:
     log.info("分步生成流水线 阶段=用例生成 状态=开始 模型=%s", use_llm_model)
     yield {"type": "phase", "phase": "cases", "status": "start"}
     yield {"type": "status", "message": "正在生成用例…"}
     tp_json = json.dumps([tp.model_dump() for tp in test_points], ensure_ascii=False)
+    case_system = _cases_from_points_prompt()
+    if skill is not None:
+        # Same design rules and delivery protocol as the fast path.
+        case_system = f"{skill.prompt()}\n\n{case_system}"
     case_messages = [
-        {"role": "system", "content": _cases_from_points_prompt()},
+        {"role": "system", "content": case_system},
         {
             "role": "user",
             "content": (
@@ -331,6 +372,7 @@ def _iter_cases_and_review(
         case_messages,
         use_llm_model=use_llm_model,
         llm_cfg=llm_cfg,
+        skill=skill,
     )
     log.info("分步生成流水线 阶段=用例生成 状态=完成 草稿数=%d", len(draft_cases))
     yield {"type": "phase", "phase": "cases", "status": "done"}
@@ -345,6 +387,7 @@ def _iter_cases_and_review(
         llm_cfg=llm_cfg,
         test_points_json=tp_json,
         context=context,
+        skill=skill,
     ):
         if event.get("type") == "review_done":
             final_cases = event["cases"]
@@ -372,6 +415,7 @@ def run_agent_pipeline_resume_cases(
     llm_cfg: LlmRuntime,
     enable_case_review: bool = False,
     review_dimensions: list[ReviewDimensionConfig] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[dict[str, Any]]:
     analysis, test_points = _artifacts_from_resume_payload(artifacts_payload)
     if isinstance(artifacts_payload, PipelineArtifacts):
@@ -387,6 +431,7 @@ def run_agent_pipeline_resume_cases(
         llm_cfg=llm_cfg,
         enable_case_review=enable_case_review,
         review_dimensions=review_dimensions,
+        skill=skill,
     )
 
 
@@ -427,10 +472,11 @@ def _content_with_images(
 def run_agent_pipeline(
     *,
     context: str,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     use_llm_model: str,
     llm_cfg: LlmRuntime,
     images: list[tuple[str, bytes]] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[dict[str, Any]]:
     chat_text = _format_chat_history(chat_messages)
     artifacts = PipelineArtifacts()
@@ -488,8 +534,12 @@ def run_agent_pipeline(
     log.info("分步生成流水线 阶段=测试点 状态=开始 模型=%s", use_llm_model)
     yield {"type": "phase", "phase": "test_points", "status": "start"}
     yield {"type": "status", "message": "正在生成测试点…"}
+    tp_system = _test_points_prompt()
+    if skill is not None:
+        # Test points must follow the same design rules the cases will use.
+        tp_system = f"{skill.prompt()}\n\n{tp_system}"
     tp_messages = [
-        {"role": "system", "content": _test_points_prompt()},
+        {"role": "system", "content": tp_system},
         {
             "role": "user",
             "content": (

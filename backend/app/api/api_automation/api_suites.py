@@ -17,6 +17,7 @@ from app.schemas.api_automation.api_automation import (
 )
 from app.schemas.page import Page
 from app.services.ai.effective_ai_settings import get_llm_runtime
+from app.services.functional.cycle_attempt_sync import sync_attempt_quietly, validate_cycle_item
 from app.services.api_automation.api_run_executor import execute_api_run
 from app.services.api_automation.api_scenario_editor import revise_scenario_steps
 from app.services.api_automation.api_suite_steps import case_ids_from_steps, normalize_steps, validate_steps_graph
@@ -274,12 +275,14 @@ def run_suite(
     if not ids and not steps:
         raise AppError("bad_request", API_SUITE_EMPTY, status_code=400)
     env = _resolve_env(db, project_id, body.env_id if body.env_id is not None else suite.env_id)
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     run = ApiRun(
         project_id=project_id,
         trigger_type="suite",
         target_id=suite.id,
         env_id=env.id if env else None,
         status="pending",
+        cycle_item_id=cycle_item.id if cycle_item is not None else None,
         triggered_by=user.id,
     )
     db.add(run)
@@ -287,6 +290,8 @@ def run_suite(
     db.refresh(run)
     if body.sync:
         execute_api_run(db, run.id)
+        if run.cycle_item_id is not None:
+            sync_attempt_quietly(db, run_type="api", run_id=run.id)
         db.refresh(run)
     else:
         task_id = enqueue_run_api_case(run.id)

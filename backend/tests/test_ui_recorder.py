@@ -14,7 +14,7 @@ from app.services.ui_automation.ui_recorder import (
     suggested_name,
     to_relative_path,
 )
-from tests.conftest import TestingSessionLocal
+from tests.conftest import TestingSessionLocal, requires_integration
 
 
 @pytest.fixture(autouse=True)
@@ -146,6 +146,7 @@ _LOGIN_HTML = """
 """
 
 
+@requires_integration
 def test_recorder_prefers_stable_selectors():
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright

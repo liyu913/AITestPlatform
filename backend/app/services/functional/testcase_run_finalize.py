@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -11,13 +12,19 @@ from app.core.datetime_json import now_beijing
 from app.models.functional.testcase import TestCase
 from app.models.functional.testcase_run import TestCaseRun
 from app.models.ui_automation.ui_automation import UiScenarioAgentSession
+from app.services.functional.case_expectation import Judgement, judge_trace
+from app.services.functional.testcase_lifecycle import (
+    case_snapshot,
+    record_execution_result,
+)
 
-_RESULT_SYNC = {"passed", "failed", "blocked"}
 _MAX_STEPS = 80
 _MAX_LOG_LINES = 200
 _MAX_SHOTS = 50
 _SHOT_STEP_RE = re.compile(r"已截图\s+step=(\d+)")
 _SHOT_FILENAME_RE = re.compile(r"^(\d+)_[^/]+\.png$", re.IGNORECASE)
+
+log = logging.getLogger(__name__)
 
 
 def execution_mode_of(plan: dict[str, Any] | None) -> str:
@@ -33,21 +40,22 @@ def case_run_id_of(plan: dict[str, Any] | None) -> int | None:
         return None
 
 
-def judge_agent_once_result(trace: list[Any] | None) -> tuple[str, str]:
-    """Return (status, error_message) from explore trace."""
-    rows = [t for t in (trace or []) if isinstance(t, dict)]
-    if not rows:
-        return "failed", "未产生执行步骤"
-    errors = [t for t in rows if str(t.get("status") or "") == "error"]
-    if errors:
-        last_err = errors[-1]
-        msg = str(last_err.get("error") or last_err.get("message") or "步骤执行失败").strip()
-        return "failed", msg or "步骤执行失败"
-    last = rows[-1]
-    action = str(last.get("action") or "").strip()
-    if action == "done" or str(last.get("status") or "") in ("ok", "passed", ""):
-        return "passed", ""
-    return "failed", "探索未正常完成（未收到 done）"
+def judge_agent_once_result(
+    trace: list[Any] | None, *, case: TestCase | None = None
+) -> tuple[str, str]:
+    """Return (status, reason) for an agent_once trace.
+
+    ``case`` carries the declared expectations. Without it the run can no longer
+    be reported as passed: "the agent said done" is not evidence that the
+    business expectation holds.
+    """
+    judgement = judge_trace(trace, case)
+    return judgement.status, judgement.reason
+
+
+def judge_agent_once(trace: list[Any] | None, case: TestCase | None) -> Judgement:
+    """Full judgement (coverage / uncovered points) for storage and display."""
+    return judge_trace(trace, case)
 
 
 def _shot_key_from_item(item: dict[str, Any]) -> str:
@@ -257,7 +265,9 @@ def create_agent_once_run(
     user_id: int | None,
     env_id: int | None,
     session_id: int,
+    cycle_item_id: int | None = None,
 ) -> TestCaseRun:
+    case = db.get(TestCase, case_id)
     run = TestCaseRun(
         project_id=project_id,
         case_id=case_id,
@@ -266,11 +276,18 @@ def create_agent_once_run(
         status="running",
         env_id=env_id,
         session_id=session_id,
+        cycle_item_id=cycle_item_id,
         summary="",
         error_message="",
         actual_result="",
         started_at=now_beijing(),
     )
+    if case is not None and case.project_id == project_id:
+        # Pin what was executed: later edits must not rewrite this evidence.
+        run.summary_json = {
+            "case_version_no": max(1, int(case.version_no or 1)),
+            "case_snapshot": case_snapshot(case),
+        }
     db.add(run)
     db.flush()
     return run
@@ -285,8 +302,13 @@ def finalize_agent_once(
     summary: str = "",
     actual_result: str = "",
     screenshot_keys: list[str] | None = None,
+    judgement: Judgement | None = None,
 ) -> TestCaseRun | None:
-    """Update TestCaseRun + sync TestCase.status; set session to done (or leave error as-is)."""
+    """Update TestCaseRun + project the outcome onto TestCase.last_result.
+
+    The case lifecycle is deliberately untouched: executing a case must not
+    promote it to "confirmed" nor demote a confirmed case back to "failed".
+    """
     plan = session.plan_json if isinstance(session.plan_json, dict) else {}
     if execution_mode_of(plan) != "agent_once":
         return None
@@ -308,7 +330,8 @@ def finalize_agent_once(
     if run is None:
         return None
 
-    final = status if status in ("passed", "failed", "error", "cancelled") else "error"
+    final = status if status in ("passed", "failed", "blocked", "error", "cancelled") else "error"
+    pinned = run.summary_json if isinstance(run.summary_json, dict) else {}
     run.status = final
     run.error_message = (error_message or "")[:4000]
     run.summary = (summary or "").strip() or (
@@ -318,18 +341,26 @@ def finalize_agent_once(
     run.finished_at = now_beijing()
     if run.started_at is None:
         run.started_at = run.finished_at
-    run.summary_json = build_run_summary_json(
+    summary_json = build_run_summary_json(
         session, status=final, screenshot_keys=screenshot_keys
     )
+    # Keep the case version/snapshot pinned when the run was created.
+    if "case_version_no" in pinned:
+        summary_json["case_version_no"] = pinned["case_version_no"]
+    if isinstance(pinned.get("case_snapshot"), dict):
+        summary_json["case_snapshot"] = pinned["case_snapshot"]
+    if judgement is not None:
+        summary_json["judgement"] = judgement.as_summary()
+    run.summary_json = summary_json
 
-    if final in _RESULT_SYNC and session.testcase_id is not None:
+    if session.testcase_id is not None:
         case = db.get(TestCase, session.testcase_id)
         if case is not None and case.project_id == session.project_id:
-            case.status = final
+            record_execution_result(case, final, at=run.finished_at)
 
     if session.status not in ("cancelled",):
         # Keep error status on session when explore failed hard; otherwise done.
-        if final in ("passed", "failed") and session.status != "error":
+        if final in ("passed", "failed", "blocked") and session.status != "error":
             session.status = "done"
         elif final == "cancelled":
             session.status = "cancelled"
@@ -341,4 +372,13 @@ def finalize_agent_once(
 
     db.add(run)
     db.flush()
+    # A run started from a batch item also records an attempt there. Failures are
+    # logged, never allowed to break the run finalization itself.
+    if run.cycle_item_id is not None:
+        try:
+            from app.services.functional.cycle_attempt_sync import sync_attempt_from_run
+
+            sync_attempt_from_run(db, run_type="functional", run_id=run.id)
+        except Exception:
+            log.exception("sync functional attempt failed run_id=%s", run.id)
     return run

@@ -13,13 +13,26 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type Key } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   EXECUTION_RESULT_OPTIONS,
+  labelForDefectCategory,
   labelForExecutionResult,
 } from '../constants/workflow'
 import { apiFetch, apiJson, ApiError } from '../api/client'
 import PageBanner from './PageBanner'
+
+type DefectSuggestion = {
+  category: string
+  severity: string
+  title: string
+  description: string
+  expected_result: string
+  actual_result: string
+  environment: string | null
+  found_build: string | null
+  reasons: string[]
+}
 
 type TestCycle = {
   id: number
@@ -31,6 +44,10 @@ type TestCycle = {
   failed_count: number
   blocked_count: number
   untested_count: number
+  target_build?: string | null
+  env_kind?: string | null
+  env_id?: number | null
+  env_snapshot_json?: { name?: string | null; base_url?: string | null } | null
 }
 
 type Attachment = {
@@ -43,7 +60,13 @@ type Attachment = {
 type CycleItem = {
   id: number
   cycle_id: number
-  case_id: number
+  case_id: number | null
+  asset_type?: string
+  asset_id?: number | null
+  asset_title?: string | null
+  attempt_no?: number
+  last_run_type?: string | null
+  last_run_id?: number | null
   case_title: string | null
   case_priority: string | null
   requirement_id: number | null
@@ -77,7 +100,8 @@ function resultColor(r: string): string {
 }
 
 export default function TestCycleDetail() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
+  const nav = useNavigate()
   const { projectId, cycleId } = useParams()
   const pid = Number(projectId)
   const cid = Number(cycleId)
@@ -190,6 +214,52 @@ export default function TestCycleDetail() {
     onError: (e) => message.error(errText(e)),
   })
 
+  const generateReport = useMutation({
+    mutationFn: () =>
+      apiJson<{ id: number }>(`/api/v1/projects/${pid}/reports/cycles/${cid}`, { method: 'POST' }),
+    onSuccess: (row) => {
+      message.success('报告已生成')
+      nav(`/projects/${pid}/reports/${row.id}`)
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
+  /** Show the rule-based draft (category/expected/actual/build) before creating. */  async function confirmDefectDraft(itemId: number) {
+    try {
+      const draft = await apiJson<DefectSuggestion>(
+        `/api/v1/projects/${pid}/defects/suggestion/from-cycle-item/${itemId}`,
+      )
+      modal.confirm({
+        title: '创建缺陷',
+        width: 560,
+        content: (
+          <div>
+            <p style={{ marginBottom: 8 }}>{draft.title}</p>
+            <p className="muted" style={{ marginBottom: 4 }}>
+              分类建议：{labelForDefectCategory(draft.category)}
+              {draft.environment ? ` · 环境：${draft.environment}` : ''}
+              {draft.found_build ? ` · 构建：${draft.found_build}` : ''}
+            </p>
+            <p className="muted" style={{ marginBottom: 4 }}>
+              预期：{draft.expected_result || '—'}
+            </p>
+            <p className="muted" style={{ marginBottom: 4 }}>
+              实际：{draft.actual_result || '—'}
+            </p>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              创建后可在缺陷页调整分类、补证据，并走复测与回归关闭。
+            </p>
+          </div>
+        ),
+        okText: '创建缺陷',
+        cancelText: '取消',
+        onOk: () => createDefect.mutateAsync(itemId),
+      })
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
   async function uploadAttachment(itemId: number, file: File) {
     const fd = new FormData()
     fd.append('file', file)
@@ -218,13 +288,51 @@ export default function TestCycleDetail() {
 
   const existingCaseIds = new Set((items.data?.items ?? []).map((i) => i.case_id))
 
+  /** Start the asset's own executor, linked to this batch item. */
+  async function startAssetRun(row: CycleItem) {
+    const assetType = row.asset_type ?? 'functional'
+    if (assetType === 'functional' || row.asset_id == null) {
+      setExecItem(row)
+      execForm.setFieldsValue({
+        result: row.result === 'untested' ? 'passed' : row.result,
+        actual_result: row.actual_result || '',
+      })
+      setExecOpen(true)
+      return
+    }
+    const envKind = cycle.data?.env_kind
+    const envId =
+      (assetType.startsWith('api') && envKind === 'api') || (assetType.startsWith('ui') && envKind === 'ui')
+        ? cycle.data?.env_id ?? undefined
+        : undefined
+    const path = assetType === 'api_case' ? 'api-cases' : assetType === 'api_suite' ? 'api-suites' : assetType === 'ui_case' ? 'ui-cases' : 'ui-suites'
+    try {
+      const run = await apiJson<{ id: number }>(
+        `/api/v1/projects/${pid}/${path}/${row.asset_id}/run`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ cycle_item_id: row.id, env_id: envId, sync: false }),
+        },
+      )
+      message.success('已提交执行')
+      nav(`/projects/${pid}/${assetType.startsWith('api') ? 'api-runs' : 'ui-runs'}/${run.id}`)
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
   const columns: ColumnsType<CycleItem> = [
     { title: 'ID', dataIndex: 'id', width: 70 },
     {
-      title: '用例',
+      title: '资产',
       render: (_, row) => (
         <span>
-          #{row.case_id} {row.case_title || ''}
+          #{row.asset_id ?? row.case_id} {row.asset_title || row.case_title || ''}
+          {row.asset_type && row.asset_type !== 'functional' ? (
+            <Tag style={{ marginInlineStart: 6 }} color="blue">
+              {row.asset_type}
+            </Tag>
+          ) : null}
         </span>
       ),
     },
@@ -239,6 +347,12 @@ export default function TestCycleDetail() {
       dataIndex: 'result',
       width: 90,
       render: (r: string) => <Tag color={resultColor(r)}>{labelForExecutionResult(r)}</Tag>,
+    },
+    {
+      title: '尝试',
+      dataIndex: 'attempt_no',
+      width: 70,
+      render: (v: number) => (v ? `#${v}` : '—'),
     },
     {
       title: '执行人',
@@ -259,23 +373,27 @@ export default function TestCycleDetail() {
     },
     {
       title: '操作',
-      width: 260,
+      width: 300,
       render: (_, row) => (
         <Space size="small" wrap>
           <Button
             type="link"
             size="small"
             onClick={() => {
-              setExecItem(row)
-              execForm.setFieldsValue({
-                result: row.result === 'untested' ? 'passed' : row.result,
-                actual_result: row.actual_result || '',
-              })
-              setExecOpen(true)
+              void startAssetRun(row)
             }}
           >
-            登记结果
+            {(row.asset_type ?? 'functional') === 'functional' ? '登记结果' : '执行'}
           </Button>
+          {row.last_run_type && row.last_run_id ? (
+            <Link
+              to={`/projects/${pid}/${row.last_run_type === 'functional' ? 'test-case-runs' : `${row.last_run_type}-runs`}/${row.last_run_id}`}
+            >
+              <Button type="link" size="small">
+                最近运行
+              </Button>
+            </Link>
+          ) : null}
           <Upload
             showUploadList={false}
             accept="image/png,image/jpeg,image/gif,image/webp"
@@ -294,7 +412,7 @@ export default function TestCycleDetail() {
               size="small"
               danger
               loading={createDefect.isPending}
-              onClick={() => createDefect.mutate(row.id)}
+              onClick={() => void confirmDefectDraft(row.id)}
             >
               建缺陷
             </Button>
@@ -318,6 +436,12 @@ export default function TestCycleDetail() {
         <Button type="primary" onClick={() => setAddOpen(true)}>
           加入用例
         </Button>
+        <Button loading={generateReport.isPending} onClick={() => generateReport.mutate()}>
+          生成报告
+        </Button>
+        <Link to={`/projects/${pid}/reports`}>
+          <Button>历史报告</Button>
+        </Link>
         <Select
           allowClear
           placeholder="按结果筛选"

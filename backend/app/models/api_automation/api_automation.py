@@ -172,6 +172,11 @@ class ApiRun(Base, TimestampMixin):
     )
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
     summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # When this run was started from a test batch, results are mirrored into a
+    # TestCycleAttempt so the batch owns the evidence.
+    cycle_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_cycle_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     triggered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     celery_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     started_at: Mapped[str | None] = mapped_column(String(64), nullable=True)

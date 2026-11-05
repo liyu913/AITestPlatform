@@ -1,7 +1,12 @@
 from app.models.identity.user import User
 from app.models.project.project import Project, ProjectMember, ProjectModule
-from app.models.functional.requirement import Requirement, RequirementAttachment
-from app.models.functional.testcase import TestCase, TestCaseStep
+from app.models.functional.requirement import Requirement, RequirementAttachment, RequirementVersion
+from app.models.functional.testcase import (
+    TestCase,
+    TestCaseReview,
+    TestCaseStep,
+    TestCaseVersion,
+)
 from app.models.functional.testcase_run import TestCaseRun
 from app.models.knowledge.knowledge import KnowledgeDocument
 from app.models.knowledge.knowledge_library import KnowledgeLibrary
@@ -43,8 +48,15 @@ from app.models.app_automation.app_automation import (
     AppRunStep,
 )
 from app.models.perf.perf_automation import PerfRun, PerfScenario
-from app.models.functional.test_plan import ExecutionAttachment, TestCycle, TestCycleItem, TestPlan
-from app.models.functional.defect import Defect, DefectAttachment
+from app.models.functional.test_plan import (
+    ExecutionAttachment,
+    TestCycle,
+    TestCycleAttempt,
+    TestCycleItem,
+    TestCycleReport,
+    TestPlan,
+)
+from app.models.functional.defect import Defect, DefectAttachment, DefectStatusHistory
 
 __all__ = [
     "User",
@@ -53,8 +65,11 @@ __all__ = [
     "ProjectModule",
     "Requirement",
     "RequirementAttachment",
+    "RequirementVersion",
     "TestCase",
     "TestCaseStep",
+    "TestCaseVersion",
+    "TestCaseReview",
     "TestCaseRun",
     "KnowledgeDocument",
     "KnowledgeLibrary",
@@ -96,7 +111,10 @@ __all__ = [
     "TestPlan",
     "TestCycle",
     "TestCycleItem",
+    "TestCycleAttempt",
+    "TestCycleReport",
     "ExecutionAttachment",
     "Defect",
     "DefectAttachment",
+    "DefectStatusHistory",
 ]

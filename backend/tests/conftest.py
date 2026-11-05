@@ -10,8 +10,22 @@ from app.deps import get_db
 from app.main import app as fastapi_app
 from app.models.base import Base
 
+import os
+
+INTEGRATION_REASON = (
+    "需要 Redis / MySQL / Playwright 等外部服务，默认跳过；"
+    "在完整环境设置 LY_INTEGRATION=1 后运行"
+)
+requires_integration = pytest.mark.skipif(
+    os.environ.get("LY_INTEGRATION") != "1", reason=INTEGRATION_REASON
+)
+
 # Default off so existing login tests need no captcha; tests that need it monkeypatch True.
 settings.require_login_captcha = False
+# Structured AI drafts (design_trace + per-step expected) are on by default in
+# production; most unit tests stub the LLM with plain cases, so they opt out and
+# the skill tests enable it explicitly.
+settings.fast_case_skill_projects = ""
 
 _engine = create_engine(
     "sqlite+pysqlite://",

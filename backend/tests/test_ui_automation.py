@@ -16,7 +16,7 @@ from app.services.ui_automation.ui_runner import (
     render_template,
 )
 from app.services.ui_automation.ui_url_guard import UnsafeUiUrlError, join_base_and_path
-from tests.conftest import TestingSessionLocal
+from tests.conftest import TestingSessionLocal, requires_integration
 
 
 def _user(username: str, pw: str):
@@ -244,6 +244,31 @@ def test_execute_ui_steps_getbyrole_not_css():
     assert any(e[0] == "click" and e[1] == "get_by_role" for e in page.events if isinstance(e, tuple))
 
 
+def test_execute_ui_script_expect_accepts_instrumented_locator(monkeypatch):
+    """Regression: expect(page.get_by_text(...)) failed on the instrumented wrapper."""
+    seen: dict[str, str] = {}
+
+    def fake_expect(actual, *args, **kwargs):
+        seen["type"] = type(actual).__name__
+        return MagicMock()
+
+    monkeypatch.setattr("playwright.sync_api.expect", fake_expect, raising=False)
+    results = execute_ui_script(
+        base_url="https://example.com",
+        script=(
+            "def run(page):\n"
+            '    expect(page.get_by_text("LY测试平台").first).to_be_visible()\n'
+            '    expect(page.locator("#main")).to_be_visible()\n'
+        ),
+        ctx={},
+        browser_factory=lambda: _FakePage(),
+    )
+    assert results, results
+    assert all(row["status"] == "passed" for row in results), results
+    # The real playwright Locator (here: the fake) must be passed, not the wrapper.
+    assert seen["type"] == "_FakeLocator"
+
+
 def test_execute_ui_script_with_fake_page():
     page = _FakePage()
     results = execute_ui_script(
@@ -366,6 +391,7 @@ def test_execute_ui_script_per_step_screenshots():
     assert emitted == ["goto", "fill", "click"]
 
 
+@requires_integration
 def test_env_case_run_project_scoped(monkeypatch):
     key = Fernet.generate_key().decode()
     monkeypatch.setattr(settings, "settings_encryption_key", key)

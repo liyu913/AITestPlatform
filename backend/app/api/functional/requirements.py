@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user, get_db, require_project_role
 from app.errors import AppError
 from app.models.project.project import ProjectMember
-from app.models.functional.requirement import Requirement, RequirementAttachment
+from app.models.functional.requirement import Requirement, RequirementAttachment, RequirementVersion
 from app.models.identity.user import User
 from app.schemas.page import Page
 from app.schemas.functional.requirement import (
@@ -20,12 +20,17 @@ from app.schemas.functional.requirement import (
     RequirementImportBodyOut,
     RequirementOut,
     RequirementUpdate,
+    RequirementVersionOut,
 )
 from app.schemas.functional.test_plan import (
     TestPlanDraftAccept,
     TestPlanDraftChatIn,
     TestPlanDraftOut,
     TestPlanOut,
+)
+from app.services.functional.asset_versions import (
+    ensure_baseline_requirement_version,
+    snapshot_requirement_version,
 )
 from app.services.functional.requirement_analysis import (
     accept_requirement_analysis,
@@ -252,9 +257,12 @@ def create_requirement(
         body_md=body.body_md,
         status=body.status,
         priority=body.priority,
+        acceptance_rules=body.acceptance_rules or "",
         creator_id=user.id,
     )
     db.add(req)
+    db.flush()
+    ensure_baseline_requirement_version(db, req, source="create", actor_id=user.id)
     db.commit()
     db.refresh(req)
     enqueue_reindex(project_id, "requirement", req.id)
@@ -417,20 +425,49 @@ def update_requirement(
     body: RequirementUpdate,
     db: Session = Depends(get_db),
     _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
 ) -> RequirementOut:
     req = _get_requirement(db, project_id, requirement_id)
     data = body.model_dump(exclude_unset=True)
+    change_note = data.pop("change_note", None)
     if req.attachments and "body_md" in data:
         # Attachment-backed requirements do not edit Markdown body.
         data.pop("body_md", None)
+    if "acceptance_rules" in data and data["acceptance_rules"] is not None:
+        data["acceptance_rules"] = data["acceptance_rules"].strip()
+    content_changed = bool(data)
     for key, val in data.items():
         setattr(req, key, val)
     if not req.attachments and not (req.body_md or "").strip():
         raise AppError("bad_request", REQUIREMENT_BODY_OR_FILE_REQUIRED, status_code=400)
+    if content_changed:
+        # Keeps old plans/runs pointing at the text they were built from.
+        snapshot_requirement_version(
+            db, req, source="edit", note=change_note, actor_id=user.id
+        )
     db.commit()
     db.refresh(req)
     enqueue_reindex(project_id, "requirement", req.id)
     return _out(req)
+
+
+@router.get("/{requirement_id}/versions", response_model=list[RequirementVersionOut])
+def list_requirement_versions(
+    project_id: int,
+    requirement_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> list[RequirementVersionOut]:
+    req = _get_requirement(db, project_id, requirement_id)
+    ensure_baseline_requirement_version(db, req, source="migration")
+    db.commit()
+    rows = (
+        db.query(RequirementVersion)
+        .filter(RequirementVersion.requirement_id == req.id)
+        .order_by(RequirementVersion.version_no.desc(), RequirementVersion.id.desc())
+        .all()
+    )
+    return [RequirementVersionOut.model_validate(r) for r in rows]
 
 
 @router.get("/{requirement_id}/attachments", response_model=list[RequirementAttachmentOut])

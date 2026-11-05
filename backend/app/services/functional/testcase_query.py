@@ -8,6 +8,20 @@ from app.models.functional.testcase import TestCase
 
 EXPORT_CASE_LIMIT = 5000
 
+# Filters accepted from older clients that used the merged status column.
+_LIFECYCLE_ALIASES = {
+    "ready": "confirmed",
+    "active": "confirmed",
+    "done": "confirmed",
+    "new": "draft",
+    "todo": "draft",
+}
+
+
+def normalize_lifecycle_filter(raw: str | None) -> str:
+    value = (raw or "").strip().lower()
+    return _LIFECYCLE_ALIASES.get(value, value)
+
 
 def apply_case_filters(
     q: Query,
@@ -18,6 +32,9 @@ def apply_case_filters(
     module: str | None = None,
     priority: str | None = None,
     status: str | None = None,
+    lifecycle_status: str | None = None,
+    last_result: str | None = None,
+    include_archived: bool = False,
 ) -> Query:
     filtered = q.filter(TestCase.project_id == project_id)
     if requirement_id is not None:
@@ -31,9 +48,18 @@ def apply_case_filters(
     pri = (priority or "").strip()
     if pri:
         filtered = filtered.filter(TestCase.priority == pri)
-    st = (status or "").strip()
-    if st:
-        filtered = filtered.filter(TestCase.status == st)
+
+    # ``status`` is the deprecated argument; it now means "lifecycle".
+    wanted = normalize_lifecycle_filter(lifecycle_status or status)
+    if wanted:
+        filtered = filtered.filter(TestCase.lifecycle_status == wanted)
+        if wanted == "archived":
+            # Asking for the archive explicitly must not be filtered out again.
+            include_archived = True
+    if last_result and last_result.strip():
+        filtered = filtered.filter(TestCase.last_result == last_result.strip().lower())
+    if not include_archived:
+        filtered = filtered.filter(TestCase.lifecycle_status != "archived")
     return filtered
 
 

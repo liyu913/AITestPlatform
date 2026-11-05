@@ -155,6 +155,27 @@ export default function UiCaseList() {
     retry: 1,
   })
 
+  // Deep link from global search: /ui-cases?case=ID opens that case for editing.
+  const openedUiCaseRef = useRef<number | null>(null)
+  const uiCaseParam = searchParams.get('case')
+  useEffect(() => {
+    if (!uiCaseParam) return
+    const caseId = Number(uiCaseParam)
+    if (!Number.isFinite(caseId) || openedUiCaseRef.current === caseId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('case')
+    setSearchParams(next, { replace: true })
+    openedUiCaseRef.current = caseId
+    const cached = (list.data?.items ?? []).find((row) => row.id === caseId)
+    if (cached) {
+      openEdit(cached)
+      return
+    }
+    void apiJson<UiCase>(`/api/v1/projects/${pid}/ui-cases/${caseId}`)
+      .then(openEdit)
+      .catch(() => undefined)
+  }, [uiCaseParam, list.data, pid, searchParams, setSearchParams])
+
   const envs = useQuery({
     queryKey: ['ui-envs', pid],
     queryFn: () => apiJson<PageRes<UiEnv>>(`/api/v1/projects/${pid}/ui-envs/?page=1&page_size=100`),

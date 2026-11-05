@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Demo Shop API
-  description: RainaAI测试平台 接口资产库导入示例（OpenAPI 3）
+  description: LY测试平台 接口资产库导入示例（OpenAPI 3）
   version: 1.0.0
 servers:
   - url: https://httpbin.org
@@ -251,12 +251,15 @@ components:
       properties:
         name:
           type: string
+          description: 商品名称
           example: Phone X
         price:
           type: number
+          description: 价格
           example: 3999.0
         stock:
           type: integer
+          description: 库存数量
           example: 100
         tags:
           type: array

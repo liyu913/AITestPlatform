@@ -4,35 +4,72 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, get_db, require_project_role
 from app.errors import AppError
-from app.user_messages import (
-    REQUIREMENT_NOT_IN_PROJECT,
-    TEST_CASE_EXPORT_TOO_MANY,
-    TEST_CASE_NOT_FOUND,
-)
-from app.models.project.project import ProjectMember
+from app.models.functional.testcase import TestCase, TestCaseReview, TestCaseStep, TestCaseVersion
 from app.models.functional.requirement import Requirement
-from app.models.functional.testcase import TestCase, TestCaseStep
-from app.models.ui_automation.ui_automation import UiCase
 from app.models.identity.user import User
-from app.schemas.page import Page
+from app.models.project.project import ProjectMember
+from app.models.ui_automation.ui_automation import UiCase
+from app.schemas.functional.design_trace import has_step_expectation
 from app.schemas.functional.testcase import (
+    TestCaseArchiveIn,
     TestCaseCreate,
     TestCaseOut,
+    TestCaseReviewIn,
+    TestCaseReviewOut,
     TestCaseStepOut,
     TestCaseUpdate,
+    TestCaseVersionOut,
     clean_case_type,
     clean_precondition,
 )
+from app.schemas.page import Page
 from app.services.functional.test_data_vars import as_str_dict, parse_test_data_text, variables_to_text
 from app.services.functional.testcase_export import build_xlsx_bytes, build_xmind_bytes
+from app.services.functional.testcase_lifecycle import (
+    LIFECYCLE_ARCHIVED,
+    LIFECYCLE_CONFIRMED,
+    LIFECYCLE_PENDING_REVIEW,
+    archive_case,
+    assert_deletable,
+    ensure_baseline_version,
+    normalize_lifecycle,
+    restore_case,
+    review_case,
+    set_lifecycle_from_payload,
+    snapshot_case_version,
+    submit_for_review,
+)
 from app.services.functional.testcase_query import (
     EXPORT_CASE_LIMIT,
     apply_case_filters,
     distinct_modules,
 )
 from app.tasks.knowledge.reindex_entity import enqueue_reindex
+from app.user_messages import (
+    REQUIREMENT_NOT_IN_PROJECT,
+    TEST_CASE_ARCHIVED_READONLY,
+    TEST_CASE_EXPORT_TOO_MANY,
+    TEST_CASE_NOT_FOUND,
+    TEST_CASE_REVIEW_COMMENT_REQUIRED,
+    TEST_CASE_VERSION_NOT_FOUND,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/test-cases", tags=["test-cases"])
+
+# Content fields whose change makes a new case version.
+_VERSIONED_FIELDS = (
+    "title",
+    "module",
+    "precondition",
+    "test_data",
+    "variables",
+    "case_type",
+    "overall_expected",
+    "requirement_id",
+    "priority",
+    "tags",
+    "steps",
+)
 
 
 def _clamp_pagination(page: int, page_size: int) -> tuple[int, int]:
@@ -45,6 +82,7 @@ def _require_case(db: Session, project_id: int, case_id: int) -> TestCase:
     c = (
         db.query(TestCase)
         .filter(TestCase.id == case_id, TestCase.project_id == project_id)
+        .options(selectinload(TestCase.steps))
         .first()
     )
     if c is None:
@@ -97,7 +135,10 @@ def _case_to_out(c: TestCase, *, linked_ui_case_count: int = 0) -> TestCaseOut:
     steps_sorted = sorted(c.steps, key=lambda s: s.order)
     tags = c.tags_json if isinstance(c.tags_json, list) else None
     variables = as_str_dict(c.variables_json)
+    lifecycle = normalize_lifecycle(c.lifecycle_status)
     return TestCaseOut(
+        ai_draft_id=c.ai_draft_id,
+        design_trace=c.design_trace,
         id=c.id,
         project_id=c.project_id,
         requirement_id=c.requirement_id,
@@ -109,7 +150,12 @@ def _case_to_out(c: TestCase, *, linked_ui_case_count: int = 0) -> TestCaseOut:
         case_type=clean_case_type(c.case_type),
         overall_expected=c.overall_expected or "",
         priority=c.priority,
-        status=c.status,
+        status=lifecycle,
+        lifecycle_status=lifecycle,
+        last_result=c.last_result,
+        last_result_at=c.last_result_at,
+        version_no=max(1, int(c.version_no or 1)),
+        archived_at=c.archived_at,
         tags_json=tags,
         creator_id=c.creator_id,
         created_at=c.created_at,
@@ -131,6 +177,9 @@ def list_cases(
     module: str | None = Query(None, max_length=128),
     priority: str | None = Query(None, max_length=64),
     status: str | None = Query(None, max_length=64),
+    lifecycle_status: str | None = Query(None, max_length=32),
+    last_result: str | None = Query(None, max_length=32),
+    include_archived: bool = Query(False),
 ) -> Page[TestCaseOut]:
     p, ps = _clamp_pagination(page, page_size)
     filtered = apply_case_filters(
@@ -141,6 +190,9 @@ def list_cases(
         module=module,
         priority=priority,
         status=status,
+        lifecycle_status=lifecycle_status,
+        last_result=last_result,
+        include_archived=include_archived,
     )
     total = filtered.count()
     rows = (
@@ -179,6 +231,7 @@ def export_cases(
     module: str | None = Query(None, max_length=128),
     priority: str | None = Query(None, max_length=64),
     status: str | None = Query(None, max_length=64),
+    lifecycle_status: str | None = Query(None, max_length=32),
 ) -> Response:
     filtered = apply_case_filters(
         db.query(TestCase),
@@ -188,6 +241,7 @@ def export_cases(
         module=module,
         priority=priority,
         status=status,
+        lifecycle_status=lifecycle_status,
     )
     total = filtered.count()
     if total > EXPORT_CASE_LIMIT:
@@ -247,9 +301,19 @@ def create_case(
         case_type=body.case_type,
         overall_expected=body.overall_expected,
         priority=body.priority,
-        status=body.status,
+        status="draft",
+        lifecycle_status="draft",
         tags_json=body.tags,
         creator_id=user.id,
+    )
+    # Legacy payloads may still carry a status; execution words become
+    # "confirmed + last_result" instead of polluting the lifecycle.
+    set_lifecycle_from_payload(
+        c,
+        lifecycle_status=body.lifecycle_status,
+        legacy_status=body.status,
+        actor_id=user.id,
+        import_mode=True,
     )
     db.add(c)
     db.flush()
@@ -262,8 +326,15 @@ def create_case(
                 expected=st.expected,
             )
         )
+    db.flush()
+    c = (
+        db.query(TestCase)
+        .options(selectinload(TestCase.steps))
+        .filter(TestCase.id == c.id)
+        .one()
+    )
+    ensure_baseline_version(db, c, source="create", actor_id=user.id)
     db.commit()
-    db.refresh(c)
     c = (
         db.query(TestCase)
         .options(selectinload(TestCase.steps))
@@ -281,14 +352,7 @@ def get_case(
     db: Session = Depends(get_db),
     _: ProjectMember = Depends(require_project_role("viewer")),
 ) -> TestCaseOut:
-    c = (
-        db.query(TestCase)
-        .options(selectinload(TestCase.steps))
-        .filter(TestCase.id == case_id, TestCase.project_id == project_id)
-        .first()
-    )
-    if c is None:
-        raise AppError("not_found", TEST_CASE_NOT_FOUND, status_code=404)
+    c = _require_case(db, project_id, case_id)
     return _case_to_out(c, linked_ui_case_count=_linked_ui_counts(db, project_id, [c.id]).get(c.id, 0))
 
 
@@ -299,10 +363,20 @@ def update_case(
     body: TestCaseUpdate,
     db: Session = Depends(get_db),
     _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
 ) -> TestCaseOut:
     c = _require_case(db, project_id, case_id)
+    if normalize_lifecycle(c.lifecycle_status) == LIFECYCLE_ARCHIVED:
+        raise AppError("bad_request", TEST_CASE_ARCHIVED_READONLY, status_code=409)
     data = body.model_dump(exclude_unset=True)
+    lifecycle_payload = data.pop("lifecycle_status", None)
+    legacy_status = data.pop("status", None)
+    change_note = data.pop("change_note", None)
     steps_payload = data.pop("steps", None)
+    if c.design_trace and steps_payload is not None and (
+        not steps_payload or any(not s["action"].strip() or not has_step_expectation(s["expected"]) for s in steps_payload)
+    ):
+        raise AppError("bad_request", "请为每步填写操作和可观察的预期结果", status_code=422)
     variables_payload = data.pop("variables", None)
     if "requirement_id" in data:
         _validate_requirement_project(db, project_id, data["requirement_id"])
@@ -320,10 +394,17 @@ def update_case(
         parsed = parse_test_data_text(data["test_data"])
         if parsed:
             c.variables_json = parsed
+
+    content_changed = bool(data) or variables_payload is not None or steps_payload is not None
     for key, val in data.items():
         setattr(c, key, val)
     if steps_payload is not None:
-        db.query(TestCaseStep).filter(TestCaseStep.case_id == c.id).delete(synchronize_session=False)
+        # Delete through the ORM (not a bulk DELETE) so the identity map and the
+        # loaded collection stay consistent when the new steps are inserted.
+        for old_step in list(c.steps):
+            db.delete(old_step)
+        db.flush()
+        db.expire(c, ["steps"])
         for i, st in enumerate(steps_payload):
             db.add(
                 TestCaseStep(
@@ -333,6 +414,33 @@ def update_case(
                     expected=st["expected"],
                 )
             )
+        content_changed = True
+    db.flush()
+    c = (
+        db.query(TestCase)
+        .options(selectinload(TestCase.steps))
+        .filter(TestCase.id == c.id)
+        .populate_existing()
+        .one()
+    )
+    if content_changed:
+        # Editing confirmed content sends it back to review, unless the caller
+        # changes the lifecycle explicitly in the same request.
+        if (
+            lifecycle_payload is None
+            and legacy_status is None
+            and normalize_lifecycle(c.lifecycle_status) == LIFECYCLE_CONFIRMED
+        ):
+            set_lifecycle_from_payload(c, lifecycle_status=LIFECYCLE_PENDING_REVIEW, actor_id=user.id)
+        snapshot_case_version(
+            db, c, source="edit", note=change_note, actor_id=user.id
+        )
+    set_lifecycle_from_payload(
+        c,
+        lifecycle_status=lifecycle_payload,
+        legacy_status=legacy_status,
+        actor_id=user.id,
+    )
     db.commit()
     c = (
         db.query(TestCase)
@@ -352,5 +460,137 @@ def delete_case(
     _: ProjectMember = Depends(require_project_role("admin")),
 ) -> None:
     c = _require_case(db, project_id, case_id)
+    # Runs/defects/cycle items keep evidence; archive instead of destroying it.
+    assert_deletable(db, c)
     db.delete(c)
     db.commit()
+
+
+@router.get("/{case_id}/versions", response_model=list[TestCaseVersionOut])
+def list_case_versions(
+    project_id: int,
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> list[TestCaseVersionOut]:
+    c = _require_case(db, project_id, case_id)
+    ensure_baseline_version(db, c, source="migration")
+    db.commit()
+    rows = (
+        db.query(TestCaseVersion)
+        .filter(TestCaseVersion.case_id == c.id)
+        .order_by(TestCaseVersion.version_no.desc(), TestCaseVersion.id.desc())
+        .all()
+    )
+    return [TestCaseVersionOut.model_validate(r) for r in rows]
+
+
+@router.get("/{case_id}/versions/{version_no}", response_model=TestCaseVersionOut)
+def get_case_version(
+    project_id: int,
+    case_id: int,
+    version_no: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> TestCaseVersionOut:
+    c = _require_case(db, project_id, case_id)
+    row = (
+        db.query(TestCaseVersion)
+        .filter(TestCaseVersion.case_id == c.id, TestCaseVersion.version_no == version_no)
+        .first()
+    )
+    if row is None:
+        raise AppError("not_found", TEST_CASE_VERSION_NOT_FOUND, status_code=404)
+    return TestCaseVersionOut.model_validate(row)
+
+
+@router.post("/{case_id}/submit-review", response_model=TestCaseOut)
+def submit_case_review(
+    project_id: int,
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
+) -> TestCaseOut:
+    c = _require_case(db, project_id, case_id)
+    submit_for_review(c)
+    db.commit()
+    c = _require_case(db, project_id, case_id)
+    return _case_to_out(c)
+
+
+@router.post("/{case_id}/review", response_model=TestCaseOut)
+def review_case_endpoint(
+    project_id: int,
+    case_id: int,
+    body: TestCaseReviewIn,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
+) -> TestCaseOut:
+    c = _require_case(db, project_id, case_id)
+    if body.decision == "rejected" and not (body.comment or "").strip():
+        raise AppError("bad_request", TEST_CASE_REVIEW_COMMENT_REQUIRED, status_code=400)
+    review_case(
+        db,
+        c,
+        decision=body.decision,
+        comment=body.comment,
+        reviewer_id=user.id,
+        version_id=body.version_id,
+    )
+    db.commit()
+    c = _require_case(db, project_id, case_id)
+    return _case_to_out(c)
+
+
+@router.get("/{case_id}/reviews", response_model=list[TestCaseReviewOut])
+def list_case_reviews(
+    project_id: int,
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("viewer")),
+) -> list[TestCaseReviewOut]:
+    c = _require_case(db, project_id, case_id)
+    rows = (
+        db.query(TestCaseReview)
+        .filter(TestCaseReview.case_id == c.id)
+        .order_by(TestCaseReview.id.desc())
+        .all()
+    )
+    return [TestCaseReviewOut.model_validate(r) for r in rows]
+
+
+@router.post("/{case_id}/archive", response_model=TestCaseOut)
+def archive_case_endpoint(
+    project_id: int,
+    case_id: int,
+    body: TestCaseArchiveIn | None = None,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
+) -> TestCaseOut:
+    c = _require_case(db, project_id, case_id)
+    archive_case(c, actor_id=user.id)
+    if body is not None and (body.reason or "").strip():
+        snapshot_case_version(
+            db, c, source="archive", note=(body.reason or "").strip(), actor_id=user.id
+        )
+    db.commit()
+    c = _require_case(db, project_id, case_id)
+    return _case_to_out(c)
+
+
+@router.post("/{case_id}/restore", response_model=TestCaseOut)
+def restore_case_endpoint(
+    project_id: int,
+    case_id: int,
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_project_role("editor")),
+    user: User = Depends(get_current_user),
+) -> TestCaseOut:
+    c = _require_case(db, project_id, case_id)
+    restore_case(c, actor_id=user.id)
+    db.commit()
+    c = _require_case(db, project_id, case_id)
+    return _case_to_out(c)

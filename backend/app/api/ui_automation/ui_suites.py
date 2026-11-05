@@ -14,6 +14,7 @@ from app.schemas.ui_automation.ui_automation import (
     UiSuiteRunRequest,
     UiSuiteUpdate,
 )
+from app.services.functional.cycle_attempt_sync import sync_attempt_quietly, validate_cycle_item
 from app.services.functional.test_data_vars import as_str_dict
 from app.services.ui_automation.ui_env_auth import normalize_auth_mode
 from app.services.ui_automation.ui_run_executor import execute_ui_run
@@ -216,6 +217,7 @@ def run_suite(
     if vars_:
         run_opts["variables"] = vars_
     outs: list[UiRunOut] = []
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     for browser in browsers:
         run = UiRun(
             project_id=project_id,
@@ -227,6 +229,7 @@ def run_suite(
             account_name=account_name,
             queue_name=queue,
             status="pending",
+            cycle_item_id=cycle_item.id if cycle_item is not None else None,
             triggered_by=user.id,
             summary_json={"run_options": run_opts} if run_opts else None,
         )
@@ -235,6 +238,8 @@ def run_suite(
         db.refresh(run)
         if body.sync:
             execute_ui_run(db, run.id)
+            if run.cycle_item_id is not None:
+                sync_attempt_quietly(db, run_type="ui", run_id=run.id)
             db.refresh(run)
         else:
             task_id = enqueue_run_ui_case(run.id, queue=queue)

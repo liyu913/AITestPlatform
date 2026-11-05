@@ -20,7 +20,7 @@ from app.services.ai import llm
 from app.services.functional.testcase_run_finalize import (
     execution_mode_of,
     finalize_agent_once,
-    judge_agent_once_result,
+    judge_agent_once,
 )
 from app.services.ui_automation.ui_ai_explorer import (
     DEFAULT_MAX_STEPS,
@@ -722,7 +722,9 @@ def _complete_explore(
         )
         mid_n = int((report.get("summary") or {}).get("midscene_steps") or 0)
         pw_n = int((report.get("summary") or {}).get("playwright_steps") or 0)
-        result, err = judge_agent_once_result(trace if isinstance(trace, list) else [])
+        case = db.get(TestCase, session.testcase_id) if session.testcase_id else None
+        judgement = judge_agent_once(trace if isinstance(trace, list) else [], case)
+        result, err = judgement.status, judgement.reason
         _emit_commit(
             db,
             session,
@@ -739,9 +741,10 @@ def _complete_explore(
             session,
             status=result,
             error_message=err,
-            summary="Agent 直跑通过" if result == "passed" else (err or "Agent 直跑失败"),
+            summary="Agent 直跑通过" if result == "passed" else (err or "Agent 直跑未通过"),
             actual_result=err or ("已按用例完成探索断言" if result == "passed" else ""),
             screenshot_keys=_screenshot_keys_from_events(session),
+            judgement=judgement,
         )
         assistant = (
             f"Agent 直跑已结束：{'通过' if result == 'passed' else '失败'}。"

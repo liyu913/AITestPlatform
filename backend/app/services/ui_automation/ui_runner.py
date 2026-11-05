@@ -739,9 +739,22 @@ def execute_ui_script(
             on_step=on_step,
             steps=step_rows,
         )
+
+        def _unwrap_for_expect(value: Any) -> Any:
+            # Playwright's expect() type-checks its argument; unwrap the
+            # instrumentation wrappers so `expect(page.locator(...))` works.
+            if isinstance(value, _InstrumentedLocator):
+                return object.__getattribute__(value, "_loc")
+            if isinstance(value, _ScriptPageInstrument):
+                return object.__getattribute__(value, "_page")
+            return value
+
+        def script_expect(actual: Any, *args: Any, **kwargs: Any) -> Any:
+            return pw_expect(_unwrap_for_expect(actual), *args, **kwargs)
+
         namespace: dict[str, Any] = {
             "__builtins__": __builtins__,
-            "expect": pw_expect,
+            "expect": script_expect,
             "env": {str(k): str(v) for k, v in (ctx or {}).items()},
             "re": re,
         }

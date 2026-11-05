@@ -1,12 +1,16 @@
 import {
   App,
   Button,
+  Descriptions,
+  Divider,
+  Drawer,
   Form,
   Input,
   Modal,
   Popconfirm,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Upload,
@@ -15,10 +19,13 @@ import type { ColumnsType } from 'antd/es/table'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
+  DEFECT_CATEGORY_OPTIONS,
   DEFECT_STATUS_OPTIONS,
+  labelForDefectCategory,
   labelForDefectStatus,
+  labelForExecutionResult,
   PRIORITY_OPTIONS,
 } from '../constants/workflow'
 import { apiFetch, apiJson, ApiError } from '../api/client'
@@ -43,15 +50,72 @@ type Defect = {
   description: string
   severity: string
   status: string
+  category: string
   case_id: number | null
   case_title: string | null
   cycle_item_id: number | null
   requirement_id: number | null
+  failure_source_type: string | null
+  failure_source_id: number | null
+  expected_result: string
+  actual_result: string
+  environment: string | null
+  found_build: string | null
+  fix_build: string | null
+  verified_at: string | null
+  verification_result: string | null
+  verification_note: string
+  regression_cycle_ids: number[]
+  closed_at: string | null
   reporter_id: number | null
   assignee_id: number | null
   created_at: string
   updated_at: string
   attachments: DefectAttachment[]
+}
+
+type DefectHistoryRow = {
+  id: number
+  from_status: string
+  to_status: string
+  comment: string
+  actor_id: number | null
+  created_at: string
+}
+
+type DefectEvidence = {
+  defect_id: number
+  cycle: {
+    id: number | null
+    name: string | null
+    plan_name: string | null
+    target_build: string | null
+    environment: string | null
+  } | null
+  item: {
+    id: number | null
+    asset_type: string | null
+    asset_title: string | null
+    result: string | null
+    actual_result: string
+    executed_at: string | null
+    attempt_no: number
+  } | null
+  attempts: {
+    id: number
+    attempt_no: number
+    execution_type: string
+    status: string
+    summary: string
+    original_run_type: string | null
+    original_run_id: number | null
+    started_at: string | null
+    finished_at: string | null
+  }[]
+  verification_result: string | null
+  verification_note: string
+  verified_at: string | null
+  history: DefectHistoryRow[]
 }
 
 type PageRes<T> = { items: T[]; total: number; page: number; page_size: number }
@@ -63,7 +127,20 @@ type DefectFormValues = {
   description?: string
   severity: string
   status: string
+  category: string
   case_id?: number | null
+  expected_result?: string
+  actual_result?: string
+  environment?: string
+  found_build?: string
+  fix_build?: string
+  status_comment?: string
+}
+
+type VerifyFormValues = {
+  result: 'passed' | 'failed'
+  fix_build: string
+  note?: string
 }
 
 const ACCEPT =
@@ -82,6 +159,7 @@ function statusColor(s: string): string {
   if (s === 'open') return 'error'
   if (s === 'in_progress') return 'processing'
   if (s === 'resolved') return 'success'
+  if (s === 'reopened') return 'warning'
   return 'default'
 }
 
@@ -119,13 +197,18 @@ export default function DefectList() {
   const { projectId } = useParams()
   const pid = Number(projectId)
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<Defect | null>(null)
+  const [verifyTarget, setVerifyTarget] = useState<Defect | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<Defect | null>(null)
+  const [detailTarget, setDetailTarget] = useState<Defect | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [pendingFiles, setPendingFiles] = useState<UploadFile[]>([])
   const [caseKeyword, setCaseKeyword] = useState('')
@@ -133,6 +216,7 @@ export default function DefectList() {
   const seenCaseTitles = useRef(new Map<number, string>())
   const [form] = Form.useForm<DefectFormValues>()
   const [editForm] = Form.useForm<DefectFormValues>()
+  const [verifyForm] = Form.useForm<VerifyFormValues>()
   const createCaseId = Form.useWatch('case_id', form)
   const editCaseId = Form.useWatch('case_id', editForm)
 
@@ -153,14 +237,29 @@ export default function DefectList() {
   })
 
   const list = useQuery({
-    queryKey: ['defects', pid, statusFilter, search, page, pageSize],
+    queryKey: ['defects', pid, statusFilter, categoryFilter, search, page, pageSize],
     queryFn: () => {
       const sp = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
       if (statusFilter) sp.set('status', statusFilter)
+      if (categoryFilter) sp.set('category', categoryFilter)
       if (search.trim()) sp.set('search', search.trim())
       return apiJson<PageRes<Defect>>(`/api/v1/projects/${pid}/defects/?${sp}`)
     },
     enabled: Number.isFinite(pid),
+  })
+
+  const historyQuery = useQuery({
+    queryKey: ['defect-history', pid, historyTarget?.id],
+    queryFn: () =>
+      apiJson<DefectHistoryRow[]>(`/api/v1/projects/${pid}/defects/${historyTarget!.id}/history`),
+    enabled: Number.isFinite(pid) && Boolean(historyTarget?.id),
+  })
+
+  const evidenceQuery = useQuery({
+    queryKey: ['defect-evidence', pid, detailTarget?.id],
+    queryFn: () =>
+      apiJson<DefectEvidence>(`/api/v1/projects/${pid}/defects/${detailTarget!.id}/evidence`),
+    enabled: Number.isFinite(pid) && Boolean(detailTarget?.id),
   })
 
   const detail = useQuery({
@@ -168,6 +267,27 @@ export default function DefectList() {
     queryFn: () => apiJson<Defect>(`/api/v1/projects/${pid}/defects/${editing!.id}`),
     enabled: Number.isFinite(pid) && Boolean(editing?.id) && editOpen,
   })
+
+  // Deep link from global search: /defects?defect=ID opens the evidence drawer.
+  const openedDefectRef = useRef<number | null>(null)
+  const defectParam = searchParams.get('defect')
+  useEffect(() => {
+    if (!defectParam) return
+    const defectId = Number(defectParam)
+    if (!Number.isFinite(defectId) || openedDefectRef.current === defectId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('defect')
+    setSearchParams(next, { replace: true })
+    openedDefectRef.current = defectId
+    const cached = (list.data?.items ?? []).find((row) => row.id === defectId)
+    if (cached) {
+      setDetailTarget(cached)
+      return
+    }
+    void apiJson<Defect>(`/api/v1/projects/${pid}/defects/${defectId}`)
+      .then(setDetailTarget)
+      .catch(() => undefined)
+  }, [defectParam, list.data, pid, searchParams, setSearchParams])
 
   const caseOptions = useMemo(() => {
     const items = cases.data?.items ?? []
@@ -199,7 +319,12 @@ export default function DefectList() {
           description: values.description ?? '',
           severity: values.severity,
           status: values.status,
+          category: values.category || 'product',
           case_id: values.case_id ?? null,
+          expected_result: values.expected_result ?? '',
+          actual_result: values.actual_result ?? '',
+          environment: values.environment?.trim() || null,
+          found_build: values.found_build?.trim() || null,
         }),
       })
       const failed: string[] = []
@@ -238,6 +363,38 @@ export default function DefectList() {
       message.success('已更新')
       setEditOpen(false)
       setEditing(null)
+      qc.invalidateQueries({ queryKey: ['defects', pid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
+  const verifyMut = useMutation({
+    mutationFn: (p: { id: number; body: VerifyFormValues }) =>
+      apiJson<Defect>(`/api/v1/projects/${pid}/defects/${p.id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify(p.body),
+      }),
+    onSuccess: (row) => {
+      message.success(
+        row.verification_result === 'passed'
+          ? `复测通过，状态：${labelForDefectStatus(row.status)}`
+          : '复测失败，缺陷已重新打开',
+      )
+      setVerifyTarget(null)
+      verifyForm.resetFields()
+      qc.invalidateQueries({ queryKey: ['defects', pid] })
+    },
+    onError: (e) => message.error(errText(e)),
+  })
+
+  const statusMut = useMutation({
+    mutationFn: (p: { id: number; status: string }) =>
+      apiJson<Defect>(`/api/v1/projects/${pid}/defects/${p.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: p.status }),
+      }),
+    onSuccess: (_row, p) => {
+      message.success(p.status === 'closed' ? '缺陷已关闭' : '已重新打开')
       qc.invalidateQueries({ queryKey: ['defects', pid] })
     },
     onError: (e) => message.error(errText(e)),
@@ -316,10 +473,35 @@ export default function DefectList() {
     { title: '标题', dataIndex: 'title', ellipsis: true },
     { title: '严重度', dataIndex: 'severity', width: 80 },
     {
+      title: '分类',
+      dataIndex: 'category',
+      width: 100,
+      render: (c: string) => labelForDefectCategory(c),
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 100,
       render: (s: string) => <Tag color={statusColor(s)}>{labelForDefectStatus(s)}</Tag>,
+    },
+    {
+      title: '构建 / 复测',
+      width: 190,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <span className="muted">发现：{row.found_build || '—'}</span>
+          <span className="muted">修复：{row.fix_build || '—'}</span>
+          <span>
+            {row.verification_result === 'passed' ? (
+              <Tag color="success">复测通过</Tag>
+            ) : row.verification_result === 'failed' ? (
+              <Tag color="error">复测失败</Tag>
+            ) : (
+              <span className="muted">未复测</span>
+            )}
+          </span>
+        </Space>
+      ),
     },
     {
       title: '关联用例',
@@ -340,9 +522,9 @@ export default function DefectList() {
     { title: '更新时间', dataIndex: 'updated_at', ellipsis: true, render: (v: string) => formatBeijing(v) },
     {
       title: '操作',
-      width: 160,
+      width: 260,
       render: (_, row) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Button
             type="link"
             size="small"
@@ -358,12 +540,57 @@ export default function DefectList() {
                 description: row.description,
                 severity: row.severity,
                 status: row.status,
+                category: row.category,
                 case_id: row.case_id ?? undefined,
+                expected_result: row.expected_result,
+                actual_result: row.actual_result,
+                environment: row.environment ?? undefined,
+                found_build: row.found_build ?? undefined,
+                fix_build: row.fix_build ?? undefined,
               })
               setEditOpen(true)
             }}
           >
             编辑
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setVerifyTarget(row)
+              verifyForm.setFieldsValue({
+                result: 'passed',
+                fix_build: row.fix_build ?? '',
+                note: '',
+              })
+            }}
+          >
+            复测
+          </Button>
+          {row.status === 'closed' ? (
+            <Button
+              type="link"
+              size="small"
+              loading={statusMut.isPending}
+              onClick={() => statusMut.mutate({ id: row.id, status: 'reopened' })}
+            >
+              重新打开
+            </Button>
+          ) : (
+            <Button
+              type="link"
+              size="small"
+              loading={statusMut.isPending}
+              onClick={() => statusMut.mutate({ id: row.id, status: 'closed' })}
+            >
+              关闭
+            </Button>
+          )}
+          <Button type="link" size="small" onClick={() => setHistoryTarget(row)}>
+            历史
+          </Button>
+          <Button type="link" size="small" onClick={() => setDetailTarget(row)}>
+            详情
           </Button>
           <Popconfirm title="确认删除？" onConfirm={() => removeDefect(row.id)}>
             <Button type="link" danger size="small">
@@ -380,12 +607,17 @@ export default function DefectList() {
   return (
     <div className="list-page">
       <div className="list-page-toolbar">
-        <PageBanner title="缺陷" />
+        <PageBanner title="缺陷与回归" />
         <Space style={{ marginBottom: 16 }} wrap>
           <Button
             type="primary"
             onClick={() => {
-              form.setFieldsValue({ severity: 'P2', status: 'open', case_id: undefined })
+              form.setFieldsValue({
+                severity: 'P2',
+                status: 'open',
+                category: 'product',
+                case_id: undefined,
+              })
               setCaseKeyword('')
               setCaseSearch('')
               setPendingFiles([])
@@ -411,6 +643,17 @@ export default function DefectList() {
             value={statusFilter}
             onChange={(v) => {
               setStatusFilter(v)
+              setPage(1)
+            }}
+          />
+          <Select
+            allowClear
+            placeholder="按分类筛选"
+            style={{ width: 150 }}
+            options={DEFECT_CATEGORY_OPTIONS}
+            value={categoryFilter}
+            onChange={(v) => {
+              setCategoryFilter(v)
               setPage(1)
             }}
           />
@@ -460,6 +703,9 @@ export default function DefectList() {
           <Form.Item name="severity" label="严重度">
             <Select options={PRIORITY_OPTIONS} />
           </Form.Item>
+          <Form.Item name="category" label="失败分类">
+            <Select options={DEFECT_CATEGORY_OPTIONS} />
+          </Form.Item>
           <Form.Item name="status" label="状态">
             <Select options={DEFECT_STATUS_OPTIONS} />
           </Form.Item>
@@ -475,6 +721,20 @@ export default function DefectList() {
               notFoundContent={cases.isFetching ? '加载中' : '无匹配用例'}
             />
           </Form.Item>
+          <Form.Item name="expected_result" label="预期结果">
+            <Input.TextArea rows={2} placeholder="按用例预期填写，便于关闭时对照" />
+          </Form.Item>
+          <Form.Item name="actual_result" label="实际结果">
+            <Input.TextArea rows={2} placeholder="失败时的实际现象或报错" />
+          </Form.Item>
+          <Space style={{ width: '100%' }} size="middle">
+            <Form.Item name="environment" label="环境" style={{ flex: 1 }}>
+              <Input placeholder="如 预发 / staging" />
+            </Form.Item>
+            <Form.Item name="found_build" label="发现构建" style={{ flex: 1 }}>
+              <Input placeholder="如 build-2026.11.05" />
+            </Form.Item>
+          </Space>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={4} />
           </Form.Item>
@@ -528,7 +788,14 @@ export default function DefectList() {
                 description: v.description ?? '',
                 severity: v.severity,
                 status: v.status,
+                status_comment: v.status_comment?.trim() || null,
+                category: v.category,
                 case_id: v.case_id ?? null,
+                expected_result: v.expected_result ?? '',
+                actual_result: v.actual_result ?? '',
+                environment: v.environment?.trim() || null,
+                found_build: v.found_build?.trim() || null,
+                fix_build: v.fix_build?.trim() || null,
               },
             })
           }}
@@ -539,8 +806,18 @@ export default function DefectList() {
           <Form.Item name="severity" label="严重度">
             <Select options={PRIORITY_OPTIONS} />
           </Form.Item>
+          <Form.Item name="category" label="失败分类">
+            <Select options={DEFECT_CATEGORY_OPTIONS} />
+          </Form.Item>
           <Form.Item name="status" label="状态">
             <Select options={DEFECT_STATUS_OPTIONS} />
+          </Form.Item>
+          <Form.Item
+            name="status_comment"
+            label="状态变更说明"
+            extra="改状态时写入缺陷历史，便于回溯"
+          >
+            <Input placeholder="如 已提交修复 / 复测通过后关闭" />
           </Form.Item>
           <Form.Item name="case_id" label="关联用例">
             <Select
@@ -554,6 +831,23 @@ export default function DefectList() {
               notFoundContent={cases.isFetching ? '加载中' : '无匹配用例'}
             />
           </Form.Item>
+          <Form.Item name="expected_result" label="预期结果">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="actual_result" label="实际结果">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Space style={{ width: '100%' }} size="middle">
+            <Form.Item name="environment" label="环境" style={{ flex: 1 }}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="found_build" label="发现构建" style={{ flex: 1 }}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="fix_build" label="修复构建" style={{ flex: 1 }}>
+              <Input placeholder="关闭前需填写" />
+            </Form.Item>
+          </Space>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={4} />
           </Form.Item>
@@ -614,6 +908,205 @@ export default function DefectList() {
           </div>
         )}
       </Modal>
+
+      <Modal
+        title={verifyTarget ? `复测缺陷 #${verifyTarget.id}` : '复测缺陷'}
+        open={Boolean(verifyTarget)}
+        onCancel={() => {
+          setVerifyTarget(null)
+          verifyForm.resetFields()
+        }}
+        onOk={() => verifyForm.submit()}
+        confirmLoading={verifyMut.isPending}
+        destroyOnHidden
+        width={560}
+      >
+        <Form
+          form={verifyForm}
+          layout="vertical"
+          onFinish={(v) => {
+            if (!verifyTarget) return
+            verifyMut.mutate({ id: verifyTarget.id, body: v })
+          }}
+        >
+          <Form.Item
+            name="result"
+            label="复测结果"
+            rules={[{ required: true, message: '请选择复测结果' }]}
+            extra="复测失败会自动重新打开缺陷；通过后状态变为已修复"
+          >
+            <Select
+              options={[
+                { value: 'passed', label: '通过（原问题不再出现）' },
+                { value: 'failed', label: '失败（问题仍存在）' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="fix_build"
+            label="修复构建"
+            rules={[{ required: true, message: '请填写修复构建' }]}
+          >
+            <Input placeholder="如 build-2026.11.10" />
+          </Form.Item>
+          <Form.Item name="note" label="复测说明">
+            <Input.TextArea rows={3} placeholder="复测步骤、证据或未通过现象" />
+          </Form.Item>
+          <p className="muted" style={{ margin: 0 }}>
+            关闭缺陷还要求关联回归批次全部通过；缺失项会在关闭时提示。
+          </p>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={historyTarget ? `状态历史 #${historyTarget.id}` : '状态历史'}
+        open={Boolean(historyTarget)}
+        footer={null}
+        onCancel={() => setHistoryTarget(null)}
+        destroyOnHidden
+        width={640}
+      >
+        <Table<DefectHistoryRow>
+          rowKey="id"
+          size="small"
+          loading={historyQuery.isLoading}
+          dataSource={historyQuery.data ?? []}
+          pagination={false}
+          locale={{ emptyText: '暂无记录' }}
+          columns={[
+            {
+              title: '时间',
+              dataIndex: 'created_at',
+              width: 170,
+              render: (v: string) => formatBeijing(v),
+            },
+            {
+              title: '变更',
+              width: 180,
+              render: (_, row) => (
+                <span>
+                  {row.from_status ? `${labelForDefectStatus(row.from_status)} → ` : ''}
+                  {labelForDefectStatus(row.to_status)}
+                </span>
+              ),
+            },
+            { title: '说明', dataIndex: 'comment', ellipsis: true },
+          ]}
+        />
+      </Modal>
+
+      <Drawer
+        title={detailTarget ? `缺陷详情 #${detailTarget.id}` : '缺陷详情'}
+        open={Boolean(detailTarget)}
+        onClose={() => setDetailTarget(null)}
+        width={760}
+        destroyOnHidden
+      >
+        {evidenceQuery.isLoading ? (
+          <Spin />
+        ) : detailTarget ? (
+          <>
+            <Descriptions
+              size="small"
+              column={1}
+              bordered
+              items={[
+                { key: 'title', label: '标题', children: detailTarget.title },
+                {
+                  key: 'status',
+                  label: '状态 / 分类',
+                  children: `${labelForDefectStatus(detailTarget.status)} · ${labelForDefectCategory(detailTarget.category)}`,
+                },
+                {
+                  key: 'builds',
+                  label: '构建',
+                  children: `发现 ${detailTarget.found_build || '—'} · 修复 ${detailTarget.fix_build || '—'}`,
+                },
+                {
+                  key: 'retest',
+                  label: '复测',
+                  children:
+                    detailTarget.verification_result === 'passed'
+                      ? `通过 ${detailTarget.verified_at ? formatBeijing(detailTarget.verified_at) : ''}`
+                      : detailTarget.verification_result === 'failed'
+                        ? '失败'
+                        : '未复测',
+                },
+                { key: 'expected', label: '预期结果', children: detailTarget.expected_result || '—' },
+                { key: 'actual', label: '实际结果', children: detailTarget.actual_result || '—' },
+                { key: 'desc', label: '描述', children: detailTarget.description || '—' },
+              ]}
+            />
+
+            <Divider>失败来源证据</Divider>
+            {evidenceQuery.data?.item ? (
+              <>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  批次：{evidenceQuery.data.cycle?.plan_name || '—'} /{' '}
+                  {evidenceQuery.data.cycle?.name || '—'} · 构建：
+                  {evidenceQuery.data.cycle?.target_build || '未知'} · 环境：
+                  {evidenceQuery.data.cycle?.environment || '—'}
+                </p>
+                <p style={{ marginBottom: 8 }}>
+                  资产：{evidenceQuery.data.item.asset_title || '—'} · 最终结果：
+                  {labelForExecutionResult(evidenceQuery.data.item.result || 'untested')} · 尝试数：
+                  {evidenceQuery.data.item.attempt_no}
+                </p>
+                <Table
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  dataSource={evidenceQuery.data.attempts}
+                  locale={{ emptyText: '没有尝试记录' }}
+                  columns={[
+                    { title: '#', dataIndex: 'attempt_no', width: 60 },
+                    { title: '执行方式', dataIndex: 'execution_type', width: 110 },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      width: 90,
+                      render: (v: string) => <Tag color={statusColor(v)}>{v}</Tag>,
+                    },
+                    { title: '摘要', dataIndex: 'summary', ellipsis: true },
+                    {
+                      title: '结束时间',
+                      dataIndex: 'finished_at',
+                      width: 160,
+                      render: (v: string | null) => (v ? formatBeijing(v) : '—'),
+                    },
+                  ]}
+                />
+              </>
+            ) : (
+              <p className="muted">该缺陷没有关联批次执行项（手工创建）</p>
+            )}
+
+            <Divider>状态历史</Divider>
+            <Table
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={evidenceQuery.data?.history ?? []}
+              locale={{ emptyText: '暂无记录' }}
+              columns={[
+                {
+                  title: '时间',
+                  dataIndex: 'created_at',
+                  width: 170,
+                  render: (v: string) => formatBeijing(v),
+                },
+                {
+                  title: '变更',
+                  width: 200,
+                  render: (_: unknown, row: DefectHistoryRow) =>
+                    `${row.from_status ? `${labelForDefectStatus(row.from_status)} → ` : ''}${labelForDefectStatus(row.to_status)}`,
+                },
+                { title: '说明', dataIndex: 'comment', ellipsis: true },
+              ]}
+            />
+          </>
+        ) : null}
+      </Drawer>
 
       <Modal
         title="图片预览"

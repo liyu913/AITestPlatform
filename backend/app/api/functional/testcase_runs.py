@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +20,7 @@ from app.models.ui_automation.ui_automation import UiScenarioAgentSession
 from app.schemas.functional.testcase_run import TestCaseRunOut
 from app.schemas.page import Page
 from app.services.file_storage import absolute_path_for_storage_key
+from app.services.functional.cycle_attempt_sync import sync_attempt_from_run
 from app.services.functional.testcase_run_finalize import (
     allowed_screenshot_keys,
     enrich_summary_step_screenshots,
@@ -27,6 +29,8 @@ from app.services.ui_automation.ui_scenario_agent import MANUAL_STOP_MESSAGE, st
 from app.user_messages import TESTCASE_RUN_NOT_CANCELLABLE, UI_SCREENSHOT_NOT_FOUND
 
 router = APIRouter(prefix="/projects/{project_id}/test-case-runs", tags=["test-case-runs"])
+
+log = logging.getLogger(__name__)
 
 
 def _clamp_pagination(page: int, page_size: int) -> tuple[int, int]:
@@ -159,6 +163,12 @@ def cancel_run(
         _mark_run_cancelled(row)
         db.commit()
         db.refresh(row)
+
+    if row.cycle_item_id is not None:
+        try:
+            sync_attempt_from_run(db, run_type="functional", run_id=row.id)
+        except Exception:
+            log.exception("sync cancelled functional attempt failed run_id=%s", row.id)
 
     titles = _titles_for(db, [row.case_id])
     return _run_out(row, titles.get(row.case_id, ""))

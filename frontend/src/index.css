@@ -3536,3 +3536,15 @@ pre.body-preview {
   width: 100%;
   min-width: 0;
 }
+
+.topbar-search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-block: 2px;
+}
+
+.topbar-search-hit-title {
+  font-weight: 500;
+}
+

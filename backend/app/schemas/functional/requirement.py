@@ -9,6 +9,7 @@ class RequirementCreate(BaseModel):
     body_md: str = Field(default="")
     status: str = Field(default="draft", max_length=64)
     priority: str | None = Field(default=None, max_length=64)
+    acceptance_rules: str = Field(default="", max_length=20000)
 
     @model_validator(mode="after")
     def require_body(self) -> "RequirementCreate":
@@ -22,6 +23,21 @@ class RequirementUpdate(BaseModel):
     body_md: str | None = None
     status: str | None = Field(default=None, max_length=64)
     priority: str | None = Field(default=None, max_length=64)
+    acceptance_rules: str | None = Field(default=None, max_length=20000)
+    change_note: str | None = Field(default=None, max_length=512)
+
+
+class RequirementVersionOut(BaseModel):
+    id: int
+    requirement_id: int
+    version_no: int
+    change_source: str
+    change_note: str | None = None
+    created_by_id: int | None = None
+    created_at: datetime
+    snapshot: dict | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class RequirementAnalysisFeatureItem(BaseModel):
@@ -128,6 +144,8 @@ class RequirementOut(BaseModel):
     body_md: str
     status: str
     priority: str | None
+    acceptance_rules: str = ""
+    version_no: int = 1
     creator_id: int | None
     attachments: list[RequirementAttachmentOut] = Field(default_factory=list)
     analysis_json: RequirementAnalysis | None = None

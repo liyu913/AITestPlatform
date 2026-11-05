@@ -24,6 +24,10 @@ class TestCaseRun(Base, TimestampMixin):
     session_id: Mapped[int | None] = mapped_column(
         ForeignKey("ui_scenario_agent_sessions.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Batch item this run belongs to (B4); mirrored into a TestCycleAttempt.
+    cycle_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_cycle_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     summary: Mapped[str] = mapped_column(Text, default="")
     error_message: Mapped[str] = mapped_column(Text, default="")
     actual_result: Mapped[str] = mapped_column(Text, default="")

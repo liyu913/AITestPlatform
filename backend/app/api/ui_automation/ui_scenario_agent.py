@@ -27,6 +27,7 @@ from app.schemas.ui_automation.ui_scenario_agent import (
 )
 from app.services.api_automation.api_scenario_events import get_event_bus
 from app.services.ai.effective_ai_settings import get_llm_runtime, get_midscene_runtime
+from app.services.functional.cycle_attempt_sync import validate_cycle_item
 from app.services.functional.testcase_run_finalize import (
     case_run_id_of,
     create_agent_once_run,
@@ -275,6 +276,7 @@ def create_session(
         raise AppError("bad_request", "Agent 直跑需要选择功能用例", status_code=400)
 
     env = resolve_env(db, project_id, body.env_id)
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     prompt = (body.prompt or "").strip()
     if not prompt and body.testcase_id is None:
         raise AppError("bad_request", "请描述要自动化的流程，或选择一个功能用例", status_code=400)
@@ -341,6 +343,7 @@ def create_session(
             user_id=user.id,
             env_id=env.id,
             session_id=row.id,
+            cycle_item_id=cycle_item.id if cycle_item is not None else None,
         )
         plan = dict(row.plan_json) if isinstance(row.plan_json, dict) else {}
         plan["_case_run_id"] = run.id

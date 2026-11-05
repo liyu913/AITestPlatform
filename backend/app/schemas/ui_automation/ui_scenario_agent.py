@@ -20,6 +20,8 @@ class UiScenarioAgentSessionCreate(BaseModel):
     auth_mode: Literal["none", "account", "token"] | None = None
     account_name: str | None = Field(default=None, max_length=128)
     execution_mode: Literal["explore_codegen", "agent_once"] = "explore_codegen"
+    # Optional test batch item this run belongs to (B4).
+    cycle_item_id: int | None = None
 
 
 class UiScenarioAgentMessage(BaseModel):

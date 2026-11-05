@@ -70,7 +70,7 @@ export default function Register() {
   if (allowed === false) {
     return (
       <AuthCard>
-        <p className="auth-card-brand">RainaAI测试平台</p>
+        <p className="auth-card-brand">LY测试平台</p>
         <h1>注册</h1>
         <p className="muted">当前未开放自助注册，请联系管理员创建账号。</p>
         <p style={{ marginTop: 16 }}>
@@ -120,7 +120,7 @@ export default function Register() {
   if (successMsg) {
     return (
       <AuthCard>
-        <p className="auth-card-brand">RainaAI测试平台</p>
+        <p className="auth-card-brand">LY测试平台</p>
         <h1>注册</h1>
         <p style={{ marginTop: 8 }}>{successMsg}</p>
         <p className="muted" style={{ marginTop: 16, marginBottom: 0 }}>
@@ -132,7 +132,7 @@ export default function Register() {
 
   return (
     <AuthCard>
-      <p className="auth-card-brand">RainaAI测试平台</p>
+      <p className="auth-card-brand">LY测试平台</p>
       <h1>注册</h1>
       <form onSubmit={onSubmit} className="form">
         <label>

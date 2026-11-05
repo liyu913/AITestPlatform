@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 import app.deps as deps_mod
+from app.services.functional.cycle_attempt_sync import sync_attempt_from_run
 from app.services.ui_automation.ui_run_executor import execute_ui_run
 from app.tasks.celery_app import celery_app
 
@@ -22,6 +23,12 @@ def run_ui_case_task(self, run_id: int) -> None:  # noqa: ANN001
             summary = run.summary_json if isinstance(run.summary_json, dict) else {}
             if summary.get("deferred"):
                 run_ui_case_task.apply_async(args=[run_id], countdown=15, queue=run.queue_name or "ui")
+        elif run is not None:
+            # Mirror the outcome into the batch item (no-op when the run has none).
+            try:
+                sync_attempt_from_run(db, run_type="ui", run_id=run_id)
+            except Exception:
+                log.exception("sync ui attempt failed run_id=%s", run_id)
     except Exception:
         log.exception("run_ui_case_task failed run_id=%s", run_id)
         raise

@@ -316,6 +316,7 @@ class UiCaseRunRequest(BaseModel):
     variables: dict[str, str] | None = None
     headless: bool = True
     sync: bool = False
+    cycle_item_id: int | None = None
 
     @field_validator("auth_mode", mode="before")
     @classmethod
@@ -380,6 +381,7 @@ class UiSuiteRunRequest(BaseModel):
     variables: dict[str, str] | None = None
     headless: bool = True
     sync: bool = False
+    cycle_item_id: int | None = None
 
     @field_validator("auth_mode", mode="before")
     @classmethod

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.functional.testcases import _case_to_out
@@ -21,11 +22,13 @@ from app.schemas.ai.ai_gen import (
     AiGenerateRequest,
     AiGenerateResponse,
     ChatMessage,
+    PromptMessage,
     GeneratedCase,
     LlmOptionsOut,
 )
 from app.schemas.functional.testcase import TestCaseOut, clean_case_type, clean_precondition
 from app.services.ai import llm
+from app.services.ai.fast_case_skill import FastCaseSkill, bundled_skill, enabled_for, validate_traced_case
 from app.services.ai.ai_gen_pipeline import (
     format_agent_done_message,
     iter_case_review,
@@ -41,6 +44,7 @@ from app.services.functional.requirement_content import (
     usable_requirement_text,
 )
 from app.services.functional.test_data_vars import parse_test_data_text
+from app.services.functional.testcase_lifecycle import ensure_baseline_version
 from app.tasks.knowledge.reindex_entity import enqueue_reindex
 from app.user_messages import (
     LLM_MODEL_NOT_CONFIGURED,
@@ -107,7 +111,7 @@ def _parse_cases_from_llm(raw: str) -> list[GeneratedCase]:
     return adapter.validate_python(payload)
 
 
-def _normalize_chat_messages(body: AiGenerateRequest) -> list[ChatMessage]:
+def _normalize_chat_messages(body: AiGenerateRequest) -> list[PromptMessage]:
     if body.messages:
         valid = [m for m in body.messages if m.content.strip()]
         if valid:
@@ -164,8 +168,8 @@ def _inject_requirement_content(
     db: Session,
     project_id: int,
     body: AiGenerateRequest,
-    chat_messages: list[ChatMessage],
-) -> list[ChatMessage]:
+    chat_messages: list[PromptMessage],
+) -> list[PromptMessage]:
     if body.requirement_id is None:
         return chat_messages
     r, _images = _load_requirement_for_generate(db, project_id, body.requirement_id)
@@ -181,7 +185,7 @@ def _inject_requirement_content(
     )
     if not chat_messages:
         return [
-            ChatMessage(
+            PromptMessage(
                 role="user",
                 content=f"{req_block}\n\n请根据上述需求文档生成测试用例。",
             )
@@ -193,10 +197,10 @@ def _inject_requirement_content(
         content = f"{req_block}\n\n请根据上述需求文档生成测试用例。"
     else:
         content = f"{req_block}\n\n{first.content}"
-    return [ChatMessage(role="user", content=content)] + list(chat_messages[1:])
+    return [PromptMessage(role="user", content=content)] + list(chat_messages[1:])
 
 
-def _last_user_message(chat_messages: list[ChatMessage]) -> str:
+def _last_user_message(chat_messages: list[PromptMessage]) -> str:
     for m in reversed(chat_messages):
         if m.role == "user":
             return m.content.strip()
@@ -207,7 +211,7 @@ def _build_retrieval_query(
     db: Session,
     project_id: int,
     body: AiGenerateRequest,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
 ) -> str:
     parts: list[str] = []
     last_user = _last_user_message(chat_messages)
@@ -249,11 +253,12 @@ def _drafts_block(current_drafts: list[GeneratedCase] | None) -> str | None:
 
 def _build_llm_messages(
     context: str,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     current_drafts: list[GeneratedCase] | None = None,
     images: list[tuple[str, bytes]] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt()}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": skill.prompt() if skill else _system_prompt()}]
     if not chat_messages:
         first_text = f"检索上下文：\n{context}\n\n请生成若干条高质量测试用例。"
     else:
@@ -298,9 +303,19 @@ def _cases_from_llm_raw(
     *,
     use_llm_model: str,
     llm_cfg,
+    skill: FastCaseSkill | None = None,
+    previous: list[GeneratedCase] | None = None,
 ) -> list[GeneratedCase]:
+    def parse(text: str) -> list[GeneratedCase]:
+        cases = _parse_cases_from_llm(text)
+        return (
+            skill.complete_cases(cases, previous, llm_model=use_llm_model)
+            if skill
+            else cases
+        )
+
     try:
-        return _parse_cases_from_llm(raw)
+        return parse(raw)
     except Exception as e1:
         log.warning(
             "用例生成大模型 JSON 解析失败，正在重试: %s 预览=%s",
@@ -319,11 +334,11 @@ def _cases_from_llm_raw(
             retry_messages, model=use_llm_model, db=None, cfg=llm_cfg, scene="用例生成"
         )
         try:
-            return _parse_cases_from_llm(raw2)
+            return parse(raw2)
         except Exception as e2:
             raise AppError(
                 "unprocessable_entity",
-                "LLM 返回内容无法解析为测试用例 JSON",
+                f"模型修订后仍未满足用例字段要求：{str(e2)[:240]}" if skill else "LLM 返回内容无法解析为测试用例 JSON",
                 detail=str(e2),
                 status_code=422,
             ) from e2
@@ -333,7 +348,7 @@ def _validate_generate_request(
     db: Session,
     project_id: int,
     body: AiGenerateRequest,
-) -> tuple[str, list[ChatMessage], list[tuple[str, bytes]]]:
+) -> tuple[str, list[PromptMessage], list[tuple[str, bytes]]]:
     rt = get_llm_runtime(db)
     has_key = bool(rt.api_key.strip())
     key_diag = describe_key_resolution(db)
@@ -376,7 +391,7 @@ def _fetch_rag_context(
     db: Session,
     project_id: int,
     body: AiGenerateRequest,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
 ) -> tuple[str, list]:
     query = _build_retrieval_query(db, project_id, body, chat_messages)
     upload_filter: list[int] | None = None
@@ -412,15 +427,16 @@ def _iter_fast_generate_stream_events(
     *,
     project_id: int,
     context: str,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     use_llm_model: str,
     llm_cfg,
     current_drafts: list[GeneratedCase] | None = None,
     enable_case_review: bool = False,
     review_dimensions: list | None = None,
     images: list[tuple[str, bytes]] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[str]:
-    messages = _build_llm_messages(context, chat_messages, current_drafts, images=images)
+    messages = _build_llm_messages(context, chat_messages, current_drafts, images=images, skill=skill)
     log.info(
         "用例生成调用大模型 模式=快速 模型=%s 上下文长度=%d 对话轮数=%d 消息数=%d",
         use_llm_model,
@@ -460,6 +476,7 @@ def _iter_fast_generate_stream_events(
         messages,
         use_llm_model=use_llm_model,
         llm_cfg=llm_cfg,
+        skill=skill, previous=current_drafts,
     )
     dims = normalize_review_dims(review_dimensions, enable=enable_case_review)
     review_result = None
@@ -470,6 +487,7 @@ def _iter_fast_generate_stream_events(
             use_llm_model=use_llm_model,
             llm_cfg=llm_cfg,
             context=context,
+            skill=skill,
         ):
             event_type = event.get("type")
             if event_type == "review_done":
@@ -507,11 +525,12 @@ def _iter_fast_generate_stream_events(
 def _agent_stream_events(
     *,
     context: str,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     body: AiGenerateRequest,
     use_llm_model: str,
     llm_cfg,
     images: list[tuple[str, bytes]] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[dict[str, Any]]:
     if body.agent_resume_from == "cases":
         if body.agent_artifacts is None:
@@ -523,6 +542,7 @@ def _agent_stream_events(
             llm_cfg=llm_cfg,
             enable_case_review=body.enable_case_review,
             review_dimensions=body.review_dimensions,
+            skill=skill,
         )
         return
     yield from run_agent_pipeline(
@@ -531,6 +551,7 @@ def _agent_stream_events(
         use_llm_model=use_llm_model,
         llm_cfg=llm_cfg,
         images=images,
+        skill=skill,
     )
 
 
@@ -538,11 +559,12 @@ def _iter_agent_generate_stream_events(
     *,
     project_id: int,
     context: str,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     body: AiGenerateRequest,
     use_llm_model: str,
     llm_cfg,
     images: list[tuple[str, bytes]] | None = None,
+    skill: FastCaseSkill | None = None,
 ) -> Iterator[str]:
     resume_label = "续跑用例" if body.agent_resume_from == "cases" else "完整流程"
     log.info(
@@ -561,6 +583,7 @@ def _iter_agent_generate_stream_events(
         use_llm_model=use_llm_model,
         llm_cfg=llm_cfg,
         images=images,
+        skill=skill,
     ):
         event_type = event.pop("type")
         yield _sse_event(event_type, event)
@@ -575,7 +598,7 @@ def _iter_generate_stream_events(
     *,
     project_id: int,
     body: AiGenerateRequest,
-    chat_messages: list[ChatMessage],
+    chat_messages: list[PromptMessage],
     use_llm_model: str,
     llm_cfg,
     images: list[tuple[str, bytes]] | None = None,
@@ -586,6 +609,7 @@ def _iter_generate_stream_events(
         if body.knowledge_library_id is not None:
             yield _sse_event("status", {"message": "正在检索知识库…"})
         context, _hits = _fetch_rag_context(db, project_id, body, chat_messages)
+        skill = FastCaseSkill.for_request(db, project_id, body, _hits, images)
 
         if body.generate_mode == "agent":
             yield from _iter_agent_generate_stream_events(
@@ -596,9 +620,11 @@ def _iter_generate_stream_events(
                 use_llm_model=use_llm_model,
                 llm_cfg=llm_cfg,
                 images=images,
+                skill=skill,
             )
         else:
             yield from _iter_fast_generate_stream_events(
+                skill=skill,
                 project_id=project_id,
                 context=context,
                 chat_messages=chat_messages,
@@ -630,7 +656,8 @@ def llm_options(
     default = (rt.model or "").strip()
     if default not in allow and models:
         default = models[0]
-    return LlmOptionsOut(default_model=default or (models[0] if models else ""), models=models)
+    return LlmOptionsOut(default_model=default or (models[0] if models else ""), models=models,
+                         case_design_skill=bundled_skill()[0] if enabled_for(project_id) else None)
 
 
 @router.post("/generate-testcases/stream")
@@ -670,6 +697,7 @@ def generate_testcases(
     use_llm_model, chat_messages, images = _validate_generate_request(db, project_id, body)
     llm_cfg = get_llm_runtime(db)
     context, _hits = _fetch_rag_context(db, project_id, body, chat_messages)
+    skill = FastCaseSkill.for_request(db, project_id, body, _hits, images)
 
     if body.generate_mode == "agent":
         for event in _agent_stream_events(
@@ -679,6 +707,7 @@ def generate_testcases(
             use_llm_model=use_llm_model,
             llm_cfg=llm_cfg,
             images=images,
+            skill=skill,
         ):
             event_type = event.get("type")
             if event_type == "clarification":
@@ -701,7 +730,7 @@ def generate_testcases(
                 return AiGenerateResponse(cases=cases, assistant_message=assistant_message)
         return AiGenerateResponse(cases=[], assistant_message="分步流程未产出用例")
 
-    messages = _build_llm_messages(context, chat_messages, body.current_drafts, images=images)
+    messages = _build_llm_messages(context, chat_messages, body.current_drafts, images=images, skill=skill)
     log.info(
         "用例生成调用大模型 模式=快速 模型=%s 上下文长度=%d 对话轮数=%d 消息数=%d 附图=%d",
         use_llm_model,
@@ -716,6 +745,7 @@ def generate_testcases(
         messages,
         use_llm_model=use_llm_model,
         llm_cfg=llm_cfg,
+        skill=skill, previous=body.current_drafts,
     )
     dims = normalize_review_dims(body.review_dimensions, enable=body.enable_case_review)
     review_result = None
@@ -726,6 +756,7 @@ def generate_testcases(
             use_llm_model=use_llm_model,
             llm_cfg=llm_cfg,
             context=context,
+            skill=skill,
         ):
             if event.get("type") == "review_done":
                 cases = event["cases"]
@@ -741,6 +772,19 @@ def generate_testcases(
     return AiGenerateResponse(cases=cases, assistant_message=assistant_message)
 
 
+def _confirmed_draft(db: Session, candidate: TestCase, *, lock: bool = False) -> TestCase | None:
+    q = db.query(TestCase).filter_by(project_id=candidate.project_id, ai_draft_id=candidate.ai_draft_id)
+    existing = (q.with_for_update() if lock else q).first()
+    if existing is not None:
+        fields = ("title", "requirement_id", "module", "precondition", "test_data", "priority",
+                  "case_type", "overall_expected", "design_trace")
+        def steps(row: TestCase):
+            return sorted((s.order, s.action, s.expected) for s in row.steps)
+        if any(getattr(existing, k) != getattr(candidate, k) for k in fields) or steps(existing) != steps(candidate):
+            raise AppError("conflict", f"这条草稿已写入用例 #{existing.id}，请在用例库编辑已写入的内容", status_code=409)
+    return existing
+
+
 @router.post("/confirm-testcases", response_model=list[TestCaseOut], status_code=201)
 def confirm_testcases(
     project_id: int,
@@ -750,13 +794,26 @@ def confirm_testcases(
     user: User = Depends(get_current_user),
 ) -> list[TestCaseOut]:
     _validate_requirement_project(db, project_id, body.requirement_id)
+    for gc in body.cases:
+        if gc.draft_id or gc.design_trace:
+            try:
+                validate_traced_case(gc)
+            except ValueError as exc:
+                raise AppError("bad_request", str(exc), status_code=422) from exc
+            trace = gc.design_trace
+            if not gc.draft_id or not trace.skill_version or not trace.source_digest:
+                raise AppError("bad_request", "设计草稿缺少来源版本或草稿编号", status_code=422)
+            _validate_requirement_project(db, project_id, trace.requirement_id)
+    result_ids: list[int] = []
     new_ids: list[int] = []
     for gc in body.cases:
         td = clean_precondition(gc.test_data)
         parsed_vars = parse_test_data_text(td)
         c = TestCase(
             project_id=project_id,
-            requirement_id=body.requirement_id,
+            requirement_id=gc.design_trace.requirement_id if gc.design_trace else body.requirement_id,
+            ai_draft_id=gc.draft_id,
+            design_trace=gc.design_trace.model_dump() if gc.design_trace else None,
             title=gc.title,
             module=(gc.module or "").strip() or None,
             precondition=clean_precondition(gc.precondition),
@@ -766,26 +823,46 @@ def confirm_testcases(
             overall_expected=(gc.overall_expected or "").strip(),
             priority=gc.priority,
             status="draft",
+            lifecycle_status="draft",
             tags_json=None,
             creator_id=user.id,
         )
-        db.add(c)
-        db.flush()
-        new_ids.append(c.id)
         for st in gc.steps:
             step_expected = (st.expected or "").strip() or STEP_EXPECTED_PLACEHOLDER
-            db.add(
+            c.steps.append(
                 TestCaseStep(
-                    case_id=c.id,
                     order=st.order,
                     action=st.action,
                     expected=step_expected,
                 )
             )
-        enqueue_reindex(project_id, "case", c.id)
+        if gc.draft_id:
+            existing = _confirmed_draft(db, c)
+            if existing is not None:
+                result_ids.append(existing.id)
+                continue
+            try:
+                with db.begin_nested():
+                    db.add(c)
+                    db.flush()
+            except IntegrityError:
+                existing = _confirmed_draft(db, c, lock=True)
+                if existing is None:
+                    raise
+                result_ids.append(existing.id)
+                continue
+        else:
+            db.add(c)
+            db.flush()
+        # AI drafts start their version history at v1 so later edits are traceable.
+        ensure_baseline_version(db, c, source="ai_confirmed", actor_id=user.id)
+        result_ids.append(c.id)
+        new_ids.append(c.id)
     db.commit()
-    out: list[TestCaseOut] = []
     for cid in new_ids:
+        enqueue_reindex(project_id, "case", cid)
+    out: list[TestCaseOut] = []
+    for cid in result_ids:
         c = (
             db.query(TestCase)
             .options(selectinload(TestCase.steps))

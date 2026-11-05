@@ -19,6 +19,7 @@ from app.schemas.api_automation.api_automation import (
 )
 from app.schemas.page import Page
 from app.services.api_automation import api_env_secrets
+from app.services.functional.cycle_attempt_sync import sync_attempt_quietly, validate_cycle_item
 from app.services.api_automation.api_runner import execute_http_case
 from app.services.api_automation.api_run_executor import execute_api_run
 from app.tasks.api_automation.run_api_case import enqueue_run_api_case
@@ -204,6 +205,7 @@ def batch_run_cases(
     env = _resolve_env(db, project_id, body.env_id)
     if env is None or not (env.base_url or "").strip():
         raise AppError("bad_request", API_ENV_BASE_URL_REQUIRED, status_code=400)
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     run = ApiRun(
         project_id=project_id,
         trigger_type="batch",
@@ -211,6 +213,7 @@ def batch_run_cases(
         env_id=env.id,
         status="pending",
         summary_json={"case_ids": case_ids},
+        cycle_item_id=cycle_item.id if cycle_item is not None else None,
         triggered_by=user.id,
     )
     db.add(run)
@@ -218,6 +221,8 @@ def batch_run_cases(
     db.refresh(run)
     if body.sync:
         execute_api_run(db, run.id)
+        if run.cycle_item_id is not None:
+            sync_attempt_quietly(db, run_type="api", run_id=run.id)
         db.refresh(run)
     else:
         task_id = enqueue_run_api_case(run.id)
@@ -385,12 +390,14 @@ def run_case(
 ) -> ApiRunOut:
     case = _require_case(db, project_id, case_id)
     env = _resolve_env(db, project_id, body.env_id)
+    cycle_item = validate_cycle_item(db, project_id, body.cycle_item_id)
     run = ApiRun(
         project_id=project_id,
         trigger_type="case",
         target_id=case.id,
         env_id=env.id if env else None,
         status="pending",
+        cycle_item_id=cycle_item.id if cycle_item is not None else None,
         triggered_by=user.id,
     )
     db.add(run)
@@ -398,6 +405,8 @@ def run_case(
     db.refresh(run)
     if body.sync:
         execute_api_run(db, run.id)
+        if run.cycle_item_id is not None:
+            sync_attempt_quietly(db, run_type="api", run_id=run.id)
         db.refresh(run)
     else:
         task_id = enqueue_run_api_case(run.id)
